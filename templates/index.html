@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seoul Gas Edge — Winter Billing &amp; Thermal Estimator</title>
+  <style>
+    :root {
+      --cf-orange: #F6821F;
+      --cf-orange-hover: #E06D0A;
+      --cf-orange-soft: #FFF5EC;
+      --cf-orange-border: #FBD3B0;
+      --cf-ink: #1D1E20;
+      --cf-ink-secondary: #4A5056;
+      --cf-muted: #6C737A;
+      --cf-bg: #FFFFFF;
+      --cf-surface: #F9FAFB;
+      --cf-border: #E2E5E9;
+      --cf-dark: #00112C;
+      --cf-dark-surface: #0A1E3F;
+      --cf-dark-border: #1E355E;
+      --cf-green: #15803D;
+      --cf-green-bg: #DCFCE7;
+      --cf-red: #B91C1C;
+      --cf-red-bg: #FEE2E2;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--cf-ink);
+      background-color: var(--cf-bg);
+      background-image: radial-gradient(#D8DCE3 1px, transparent 1px);
+      background-size: 24px 24px;
+      line-height: 1.5;
+    }
+
+    /* Top Cloudflare-style Utility Bar */
+    .topbar {
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--cf-border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .topbar-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      color: var(--cf-ink);
+    }
+    .brand-mark {
+      width: 28px;
+      height: 20px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #F6821F 0%, #FBAD41 100%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--cf-ink-secondary);
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      font-family: var(--mono);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #16A34A;
+      box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+    }
+
+    /* Hero Banner */
+    .hero {
+      background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 245, 236, 0.65) 100%);
+      border-bottom: 1px solid var(--cf-border);
+      padding: 2.5rem 1.5rem 2.25rem;
+    }
+    .hero-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1.5rem;
+    }
+    .eyebrow {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cf-orange);
+      background: var(--cf-orange-soft);
+      border: 1px solid var(--cf-orange-border);
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.75rem, 3vw, 2.4rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--cf-ink);
+    }
+    .hero-sub {
+      margin: 0.55rem 0 0;
+      color: var(--cf-ink-secondary);
+      font-size: 1rem;
+      max-width: 620px;
+    }
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .chip {
+      background: #FFFFFF;
+      border: 1px solid var(--cf-border);
+      color: var(--cf-ink);
+      padding: 0.5rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .chip:hover {
+      border-color: var(--cf-orange);
+      color: var(--cf-orange);
+    }
+    .chip.active {
+      background: var(--cf-orange);
+      border-color: var(--cf-orange);
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(246, 130, 31, 0.28);
+    }
+
+    /* Main Workspace */
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #FFFFFF;
+      border: 1px solid var(--cf-border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--cf-border);
+      padding-bottom: 0.85rem;
+      margin-bottom: 1.15rem;
+    }
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--cf-ink);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .step-tag {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--cf-orange);
+      background: var(--cf-orange-soft);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--cf-ink-secondary);
+    }
+    select, input[type="number"] {
+      background: #FFFFFF;
+      border: 1px solid var(--cf-border);
+      color: var(--cf-ink);
+      border-radius: 6px;
+      padding: 0.55rem 0.7rem;
+      font-size: 0.92rem;
+      font-family: var(--sans);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    select:focus, input[type="number"]:focus {
+      outline: none;
+      border-color: var(--cf-orange);
+      box-shadow: 0 0 0 3px rgba(246, 130, 31, 0.16);
+    }
+
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #E2E5E9;
+      border-radius: 999px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--cf-orange);
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.12);
+    }
+    input[type="range"]:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .checks {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-top: 1.1rem;
+      padding-top: 0.9rem;
+      border-top: 1px dashed var(--cf-border);
+    }
+    .checks label {
+      flex-direction: row;
+      align-items: center;
+      color: var(--cf-ink);
+      font-weight: 500;
+      cursor: pointer;
+    }
+    input[type="checkbox"] {
+      accent-color: var(--cf-orange);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    /* Mode Tabs */
+    .mode-switch {
+      display: inline-flex;
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      padding: 0.25rem;
+      border-radius: 6px;
+      margin-bottom: 1.15rem;
+      width: 100%;
+    }
+    .mode-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--cf-ink-secondary);
+      padding: 0.55rem 0.75rem;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .mode-btn.active {
+      background: #FFFFFF;
+      color: var(--cf-orange);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .slider-panel {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      border-radius: 8px;
+      padding: 1.1rem 1.2rem;
+    }
+    .slider-readout {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.5rem;
+    }
+    .big-temp {
+      font-family: var(--mono);
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--cf-orange);
+    }
+
+    .sched-row {
+      display: grid;
+      grid-template-columns: 128px 1fr 68px 86px;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid var(--cf-border);
+    }
+    .sched-row:last-child { border-bottom: none; }
+    .sched-meta {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: var(--cf-ink);
+    }
+    .sched-meta span {
+      font-family: var(--mono);
+      color: var(--cf-muted);
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+
+    /* Cloudflare Dark Navy Telemetry Summary Card */
+    .dark-card {
+      background: var(--cf-dark);
+      color: #FFFFFF;
+      border: 1px solid var(--cf-dark-border);
+      border-radius: 8px;
+      padding: 1.6rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 17, 44, 0.25);
+    }
+    .dark-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #93C5FD;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .hero-bill {
+      font-size: 2.65rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: #FFFFFF;
+    }
+    .hero-bill span {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #94A3B8;
+    }
+    .hero-meta {
+      font-family: var(--mono);
+      color: #CBD5E1;
+      font-size: 0.82rem;
+      margin-top: 0.45rem;
+    }
+    .pill {
+      display: inline-block;
+      margin-top: 0.9rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .pill.good { background: rgba(22, 163, 74, 0.22); color: #86EFAC; border: 1px solid rgba(134, 239, 172, 0.3); }
+    .pill.warn { background: rgba(246, 130, 31, 0.22); color: #FDBA74; border: 1px solid rgba(253, 186, 116, 0.35); }
+
+    .bar {
+      display: flex;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--cf-dark-surface);
+      margin: 1.25rem 0 0.55rem;
+    }
+    .bar-heat { background: var(--cf-orange); transition: width 0.25s ease; }
+    .bar-hw { background: #38BDF8; transition: width 0.25s ease; }
+    .legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: #CBD5E1;
+      font-family: var(--mono);
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 1.15rem;
+    }
+    .kv div {
+      background: var(--cf-dark-surface);
+      border: 1px solid var(--cf-dark-border);
+      padding: 0.75rem 0.85rem;
+      border-radius: 6px;
+    }
+    .kv span {
+      display: block;
+      color: #94A3B8;
+      font-size: 0.74rem;
+      margin-bottom: 0.15rem;
+    }
+    .kv strong {
+      font-family: var(--mono);
+      font-size: 1rem;
+      color: #FFFFFF;
+    }
+
+    .chart-box {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      border-radius: 6px;
+      padding: 0.85rem;
+    }
+    svg { width: 100%; height: 165px; display: block; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">ICN</span>
+        <span>Seoul Gas Analytics</span>
+      </div>
+      <div class="status-badge">
+        <span class="dot"></span>
+        <span>SEOUL TARIFF ₩22.5268/MJ · LIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <div>
+        <span class="eyebrow">Residential Thermal &amp; Billing Engine</span>
+        <h1>Predict your Seoul winter gas bill.</h1>
+        <p class="hero-sub">Model how hourly indoor temperature adjustments, building insulation, and Seoul winter cold snaps impact your monthly MJ consumption.</p>
+      </div>
+      <div class="presets">
+        <button type="button" class="chip active" data-preset="oneroom_jan">Oneroom · Jan Peak</button>
+        <button type="button" class="chip" data-preset="wfh_balanced">WFH · Steady 21.5°C</button>
+        <button type="button" class="chip" data-preset="apt_family">Apartment · 3 Residents</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <div class="layout">
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="step-tag">01</span> Building &amp; Weather Profile</div>
+          </div>
+          <div class="grid">
+            <label>Billing Month
+              <select id="month">
+                <option value="nov">November (~7.5°C)</option>
+                <option value="dec">December (~1.0°C)</option>
+                <option value="jan" selected>January (-1.8°C)</option>
+                <option value="feb">February (~1.2°C)</option>
+              </select>
+            </label>
+            <label>Housing Type
+              <select id="building_type">
+                <option value="oneroom" selected>Oneroom</option>
+                <option value="officetel">Officetel</option>
+                <option value="villa">Villa</option>
+                <option value="apartment">Apartment</option>
+              </select>
+            </label>
+            <label>Floor Area (평)
+              <input type="number" step="0.5" id="area_pyeong" value="8" />
+            </label>
+            <label>Household Size
+              <input type="number" step="1" id="household_size" value="1" />
+            </label>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="is_top_or_corner_unit" /> Top / Corner Unit (+18% heat loss)</label>
+            <label><input type="checkbox" id="is_older_building" /> Older Building (+20% heat loss)</label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="step-tag">02</span> Temperature Control Strategy</div>
+          </div>
+
+          <div class="mode-switch">
+            <button type="button" class="mode-btn active" id="btn-const">Constant Setpoint Slider</button>
+            <button type="button" class="mode-btn" id="btn-sched">24-Hour Time-of-Day Schedule</button>
+          </div>
+
+          <div id="sec-const" class="slider-panel">
+            <div class="slider-readout">
+              <span style="font-weight:700;font-size:0.9rem;">Indoor Setpoint (실내온도)</span>
+              <span class="big-temp" id="lbl-target-temp">22.0°C</span>
+            </div>
+            <input type="range" id="target_temp_c" min="15" max="30" step="0.5" value="22" />
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.74rem;color:var(--cf-muted);margin-top:0.35rem;">
+              <span>15.0°C ECO</span><span>20.0°C</span><span>25.0°C</span><span>30.0°C MAX</span>
+            </div>
+
+            <div style="margin-top:1.15rem;padding-top:0.95rem;border-top:1px solid var(--cf-border);">
+              <div class="slider-readout">
+                <span style="font-weight:600;font-size:0.86rem;color:var(--cf-ink-secondary);">Active Heating Duration</span>
+                <strong style="font-family:var(--mono);font-size:0.92rem;" id="lbl-hours">12h / day</strong>
+              </div>
+              <input type="range" id="heating_hours_per_day" min="2" max="24" step="1" value="12" />
+            </div>
+          </div>
+
+          <div id="sec-sched" class="slider-panel" style="display:none;">
+            <div class="sched-row">
+              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="act-morning" checked />
+                <div class="sched-meta">Morning<span>06:00–09:00</span></div>
+              </label>
+              <input type="range" id="temp-morning" min="15" max="30" step="0.5" value="22" />
+              <strong id="val-morning" style="font-family:var(--mono);font-size:0.86rem;">22.0°C</strong>
+              <span id="cost-morning" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+            </div>
+            <div class="sched-row">
+              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="act-daytime" />
+                <div class="sched-meta">Daytime<span>09:00–18:00</span></div>
+              </label>
+              <input type="range" id="temp-daytime" min="15" max="30" step="0.5" value="18" />
+              <strong id="val-daytime" style="font-family:var(--mono);font-size:0.86rem;">Away</strong>
+              <span id="cost-daytime" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+            </div>
+            <div class="sched-row">
+              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="act-evening" checked />
+                <div class="sched-meta">Evening<span>18:00–23:00</span></div>
+              </label>
+              <input type="range" id="temp-evening" min="15" max="30" step="0.5" value="23" />
+              <strong id="val-evening" style="font-family:var(--mono);font-size:0.86rem;">23.0°C</strong>
+              <span id="cost-evening" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+            </div>
+            <div class="sched-row">
+              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="act-night" checked />
+                <div class="sched-meta">Night<span>23:00–06:00</span></div>
+              </label>
+              <input type="range" id="temp-night" min="15" max="30" step="0.5" value="20" />
+              <strong id="val-night" style="font-family:var(--mono);font-size:0.86rem;">20.0°C</strong>
+              <span id="cost-night" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="step-tag">03</span> Meter Burn-Rate Calibration (Optional)</div>
+          </div>
+          <div class="grid">
+            <label>Previous Meter (m³)
+              <input type="number" step="0.1" id="previous_reading_m3" placeholder="Optional" />
+            </label>
+            <label>Current Meter (m³)
+              <input type="number" step="0.1" id="current_reading_m3" placeholder="Optional" />
+            </label>
+            <label>Elapsed Days
+              <input type="number" step="1" id="elapsed_days" placeholder="e.g. 10" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="dark-card">
+          <div class="dark-eyebrow">Projected Monthly Statement</div>
+          <div class="hero-bill" id="hero-total">₩0 <span>/ mo</span></div>
+          <div class="hero-meta" id="hero-usage">0 m³ · 0 MJ · Seoul ~-1.8°C</div>
+          <div id="delta-pill" class="pill good">Calculating...</div>
+
+          <div class="bar">
+            <div class="bar-heat" id="bar-heat" style="width:70%"></div>
+            <div class="bar-hw" id="bar-hw" style="width:30%"></div>
+          </div>
+          <div class="legend">
+            <span id="leg-heat">Space Heating: 0 m³</span>
+            <span id="leg-hw">Hot Water: 0 m³</span>
+          </div>
+          <div class="kv">
+            <div>
+              <span>Gas + Base Charge</span>
+              <strong id="kv-sub">₩0</strong>
+            </div>
+            <div>
+              <span>VAT</span>
+              <strong id="kv-vat">₩0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Daily Temperature Schedule</div>
+          </div>
+          <div class="chart-box">
+            <svg id="temp-chart" viewBox="0 0 420 165" role="img" aria-label="Daily indoor temperature schedule"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>
