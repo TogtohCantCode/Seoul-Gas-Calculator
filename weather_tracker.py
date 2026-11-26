@@ -7,21 +7,40 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-SEOUL_LAT = 37.5665
-SEOUL_LON = 126.9780
+REGION_COORDS = {
+    "seoul": (37.5665, 126.9780),
+    "gyeonggi": (37.2636, 127.0286),  # Suwon / Gyeonggi central
+    "incheon": (37.4563, 126.7052),
+}
 
 MONTHLY_FALLBACK_TEMP_C = {
-    11: 7.5,
-    12: 1.0,
     1: -1.8,
     2: 1.2,
+    3: 6.5,
+    4: 13.0,
+    5: 18.5,
+    6: 22.8,
+    7: 25.5,
+    8: 26.2,
+    9: 21.8,
+    10: 15.2,
+    11: 7.5,
+    12: 1.0,
 }
 
 MONTHLY_FALLBACK_WIND_KMH = {
-    11: 13.5,
-    12: 14.5,
     1: 15.0,
     2: 15.5,
+    3: 16.0,
+    4: 15.0,
+    5: 13.5,
+    6: 12.5,
+    7: 12.0,
+    8: 12.0,
+    9: 11.5,
+    10: 12.0,
+    11: 13.5,
+    12: 14.5,
 }
 
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -50,7 +69,7 @@ def _fallback_series(start_dt: date, end_dt: date) -> list[dict[str, Any]]:
     days: list[dict[str, Any]] = []
     cur = start_dt
     while cur <= end_dt:
-        base_t = MONTHLY_FALLBACK_TEMP_C.get(cur.month, 2.5)
+        base_t = MONTHLY_FALLBACK_TEMP_C.get(cur.month, 5.0)
         base_w = MONTHLY_FALLBACK_WIND_KMH.get(cur.month, 14.0)
         days.append({
             "date": cur.isoformat(),
@@ -80,7 +99,7 @@ def _parse_open_meteo_daily(payload: Any, source_label: str) -> list[dict[str, A
         dt_obj = date.fromisoformat(str(d_str)[:10])
         m_val = means[idx]
         if m_val is None:
-            m_val = MONTHLY_FALLBACK_TEMP_C.get(dt_obj.month, 2.5)
+            m_val = MONTHLY_FALLBACK_TEMP_C.get(dt_obj.month, 5.0)
         min_v = mins[idx] if isinstance(mins, list) and idx < len(mins) and mins[idx] is not None else float(m_val) - 4.0
         max_v = maxs[idx] if isinstance(maxs, list) and idx < len(maxs) and maxs[idx] is not None else float(m_val) + 4.0
         wind_v = (
@@ -99,17 +118,17 @@ def _parse_open_meteo_daily(payload: Any, source_label: str) -> list[dict[str, A
     return rows
 
 
-def _fetch_forecast_14d(today: date) -> tuple[list[dict[str, Any]], bool]:
+def _fetch_forecast_14d(today: date, lat: float, lon: float) -> tuple[list[dict[str, Any]], bool]:
     params = urllib.parse.urlencode({
-        "latitude": SEOUL_LAT,
-        "longitude": SEOUL_LON,
+        "latitude": lat,
+        "longitude": lon,
         "forecast_days": 14,
         "daily": "temperature_2m_mean,temperature_2m_min,temperature_2m_max,wind_speed_10m_max",
         "timezone": "Asia/Seoul",
     })
     url = f"https://api.open-meteo.com/v1/forecast?{params}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "SeoulGasEstimator/2.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "SeoulGasEstimator/3.0"})
         with urllib.request.urlopen(req, timeout=4.0) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         parsed = _parse_open_meteo_daily(payload, "forecast_14d")
@@ -119,10 +138,16 @@ def _fetch_forecast_14d(today: date) -> tuple[list[dict[str, Any]], bool]:
         return [], False
 
 
-def fetch_seoul_weather_range(raw_start_date: Any, today: Optional[date] = None) -> dict[str, Any]:
+def fetch_seoul_weather_range(
+    raw_start_date: Any,
+    region: str = "seoul",
+    today: Optional[date] = None,
+) -> dict[str, Any]:
     end_dt = today or date.today()
     start_dt = resolve_billing_start_date(raw_start_date, today=end_dt)
-    cache_key = f"v2:{start_dt.isoformat()}:{end_dt.isoformat()}"
+    clean_region = region if region in REGION_COORDS else "seoul"
+    lat, lon = REGION_COORDS[clean_region]
+    cache_key = f"v3:{clean_region}:{start_dt.isoformat()}:{end_dt.isoformat()}"
 
     now_ts = datetime.now().timestamp()
     cached = _CACHE.get(cache_key)
@@ -130,8 +155,8 @@ def fetch_seoul_weather_range(raw_start_date: Any, today: Optional[date] = None)
         return cached[1]
 
     params = urllib.parse.urlencode({
-        "latitude": SEOUL_LAT,
-        "longitude": SEOUL_LON,
+        "latitude": lat,
+        "longitude": lon,
         "start_date": start_dt.isoformat(),
         "end_date": end_dt.isoformat(),
         "daily": "temperature_2m_mean,temperature_2m_min,temperature_2m_max,wind_speed_10m_max",
@@ -143,7 +168,7 @@ def fetch_seoul_weather_range(raw_start_date: Any, today: Optional[date] = None)
     source = "live_open_meteo"
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "SeoulGasEstimator/2.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "SeoulGasEstimator/3.0"})
         with urllib.request.urlopen(req, timeout=4.0) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         daily_rows = _parse_open_meteo_daily(payload, "live")
@@ -154,7 +179,7 @@ def fetch_seoul_weather_range(raw_start_date: Any, today: Optional[date] = None)
         daily_rows = _fallback_series(start_dt, end_dt)
         source = "fallback"
 
-    forecast_rows, forecast_live = _fetch_forecast_14d(end_dt)
+    forecast_rows, forecast_live = _fetch_forecast_14d(end_dt, lat, lon)
 
     temps = [row["avg_temp_c"] for row in daily_rows]
     winds = [row["wind_kmh"] for row in daily_rows]
@@ -164,6 +189,7 @@ def fetch_seoul_weather_range(raw_start_date: Any, today: Optional[date] = None)
     cumulative_hdd = round(sum(hdds), 1)
 
     result = {
+        "region": clean_region,
         "billing_start_date": start_dt.isoformat(),
         "as_of_date": end_dt.isoformat(),
         "days_tracked": len(daily_rows),

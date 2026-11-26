@@ -20,20 +20,44 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, "static"),
 )
 
-# Seoul City Gas residential tariff (주택용 취사·난방 단가, VAT excluded)
-DEFAULT_TARIFF = {
-    "unit_rate_krw_per_mj": 22.5268,
-    "base_charge_krw": 1250.0,
-    "avg_calorific_mj_per_m3": 43.1,
-    "correction_factor": 0.998,
-    "vat_rate": 0.10,
+# 2026 Residential City Gas Tariffs (주택용 취사·난방 단가, VAT excluded)
+REGION_TARIFFS = {
+    "seoul": {
+        "unit_rate_krw_per_mj": 22.5268,
+        "base_charge_krw": 1250.0,
+        "avg_calorific_mj_per_m3": 43.1,
+        "correction_factor": 0.998,
+        "vat_rate": 0.10,
+    },
+    "gyeonggi": {
+        "unit_rate_krw_per_mj": 22.6226,
+        "base_charge_krw": 1250.0,
+        "avg_calorific_mj_per_m3": 43.1,
+        "correction_factor": 0.998,
+        "vat_rate": 0.10,
+    },
+    "incheon": {
+        "unit_rate_krw_per_mj": 22.5084,
+        "base_charge_krw": 1000.0,
+        "avg_calorific_mj_per_m3": 43.1,
+        "correction_factor": 0.998,
+        "vat_rate": 0.10,
+    },
 }
 
 MONTH_TO_NUM = {
-    "nov": 11,
-    "dec": 12,
     "jan": 1,
     "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
 }
 
 BUILDING_HEATING_FACTOR = {
@@ -140,7 +164,6 @@ def _slab_recovery_penalty(
     away_hours_accumulated: float,
     building_type: str,
 ) -> float:
-    """Concrete ondol slabs lose stored heat during multi-hour Away blocks and need extra burn to recover."""
     if not b_active:
         return 1.0
     temp_jump = (b_temp - prev_temp) if prev_temp is not None else 0.0
@@ -158,6 +181,7 @@ def _day_heating_m3(
     wind_kmh: float,
     area_pyeong: float,
     building_type: str,
+    orientation: str,
     boiler_mode: str,
     target_temp_c: float,
     ondol_temp_c: float,
@@ -181,6 +205,7 @@ def _day_heating_m3(
             duty_cycle=duty,
             is_top_or_corner=is_top_or_corner,
             is_older=is_older,
+            orientation=orientation,
             wind_kmh=wind_kmh,
             away_interval_min=away_interval_min,
             away_cycle_hours=away_cycle_hours,
@@ -218,6 +243,7 @@ def _day_heating_m3(
             duty_cycle=duty,
             is_top_or_corner=is_top_or_corner,
             is_older=is_older,
+            orientation=orientation,
             wind_kmh=wind_kmh,
             away_interval_min=away_interval_min,
             away_cycle_hours=away_cycle_hours,
@@ -244,6 +270,7 @@ def _build_savings_recommendations(
     household_size: int,
     area_pyeong: float,
     building_type: str,
+    orientation: str,
     boiler_mode: str,
     target_temp_c: float,
     ondol_temp_c: float,
@@ -255,12 +282,10 @@ def _build_savings_recommendations(
     use_schedule: bool,
     raw_schedule: dict[str, Any],
     tariff: dict[str, float],
-) -> list[dict[str, Any]]:
-    """Simulate counterfactual strategies on the exact same cycle weather baseline."""
+) -> tuple[list[dict[str, Any]], int, Optional[dict[str, str]]]:
     tips: list[dict[str, Any]] = []
     norm_sched = _normalized_schedule(raw_schedule)
 
-    # Apples-to-apples full-cycle baseline using the user's current settings
     hdd_norm = daily_hdd(cycle_avg_temp_c) / 18.0
     cycle_hw_m3 = billing_cycle_days * household_size * baseline_per_person * (1.0 + 0.15 * hdd_norm)
     base_day_heat = _day_heating_m3(
@@ -268,6 +293,7 @@ def _build_savings_recommendations(
         wind_kmh=avg_wind,
         area_pyeong=area_pyeong,
         building_type=building_type,
+        orientation=orientation,
         boiler_mode=boiler_mode,
         target_temp_c=target_temp_c,
         ondol_temp_c=ondol_temp_c,
@@ -283,12 +309,26 @@ def _build_savings_recommendations(
     base_total_m3 = cycle_hw_m3 + base_heat_m3
     base_bill_krw = _calculate_krw(base_total_m3, tariff)["total_bill_krw"]
 
-    # Determine active schedule temperatures if user is in 24h schedule mode
     active_block_temps = [v["temp_c"] for v in norm_sched.values() if v["active"]]
     peak_sched_temp = max(active_block_temps) if active_block_temps else 22.0
     has_deep_away = use_schedule and any(not v["active"] for v in norm_sched.values())
 
-    # 1. Trim current temperatures by 1.5°C (works for BOTH 24h Schedule and Constant Slider)
+    # Bill shock alert when user runs >= 23°C
+    shock_alert: Optional[dict[str, str]] = None
+    effective_peak = peak_sched_temp if (boiler_mode == "indoor_temp" and use_schedule) else target_temp_c
+    if boiler_mode == "indoor_temp" and effective_peak >= 23.0 and base_heat_m3 > 15.0:
+        shock_alert = {
+            "en": f"High Setpoint Alert ({effective_peak:.1f}°C): Every 1°C above 20°C increases gas burn exponentially (~12–15% per degree).",
+            "ko": f"고온 설정 주의 ({effective_peak:.1f}°C): 실내온도를 20°C보다 1°C 높일 때마다 가스 사용량이 약 12~15%씩 급증합니다.",
+        }
+    elif boiler_mode == "ondol_water" and ondol_temp_c >= 68.0 and base_heat_m3 > 15.0:
+        shock_alert = {
+            "en": f"High Water Temp Alert ({ondol_temp_c:.0f}°C): Floor water above 65°C causes rapid boiler cycling and high bills.",
+            "ko": f"난방수 고온 주의 ({ondol_temp_c:.0f}°C): 난방수 65°C 이상 설정은 보일러 연속 가동으로 요금 폭탄의 주원인이 됩니다.",
+        }
+
+    # 1. Trim current temperatures by 1.5°C
+    best_behavioral_day = base_day_heat
     if boiler_mode == "indoor_temp" and use_schedule:
         max_trim = max((v["temp_c"] - 19.0 for v in norm_sched.values() if v["active"]), default=0.0)
         if max_trim >= 0.5:
@@ -304,6 +344,7 @@ def _build_savings_recommendations(
                 wind_kmh=avg_wind,
                 area_pyeong=area_pyeong,
                 building_type=building_type,
+                orientation=orientation,
                 boiler_mode="indoor_temp",
                 target_temp_c=target_temp_c,
                 ondol_temp_c=ondol_temp_c,
@@ -315,20 +356,20 @@ def _build_savings_recommendations(
                 use_schedule=True,
                 raw_schedule=trimmed_sched,
             )
+            best_behavioral_day = min(best_behavioral_day, trim_day_m3)
             trim_bill_krw = _calculate_krw(cycle_hw_m3 + trim_day_m3 * billing_cycle_days, tariff)["total_bill_krw"]
             trim_savings = base_bill_krw - trim_bill_krw
             new_peak = max((v["temp_c"] for v in trimmed_sched.values() if v["active"]), default=peak_sched_temp)
             if trim_savings >= 1000:
                 tips.append({
                     "id": "trim_schedule_temps",
-                    "title": f"Trim Active Schedule Blocks by 1.5°C (Peak {peak_sched_temp:.1f}°C → {new_peak:.1f}°C) + Humidifier",
+                    "title_en": f"Trim Active Schedule by 1.5°C (Peak {peak_sched_temp:.1f}°C → {new_peak:.1f}°C) + Humidifier",
+                    "title_ko": f"스케줄 온도 1.5°C 낮추기 (최고 {peak_sched_temp:.1f}°C → {new_peak:.1f}°C) + 가습기",
                     "savings_krw": int(trim_savings),
-                    "comfort_note": (
-                        "Keeping indoor humidity at 45–55% improves heat transfer so your trimmed schedule "
-                        "feels just as warm while cutting peak gas burn."
-                    ),
-                    "action_type": "apply_schedule",
-                    "action_label": f"Trim Schedule to {new_peak:.1f}°C",
+                    "note_en": "Keeping humidity at 45–55% improves air heat transfer so your trimmed schedule feels equally warm.",
+                    "note_ko": "실내 습도를 45~55%로 유지하면 공기 대류가 빨라져 1.5°C 낮춰도 체감 온도는 동일하게 따뜻합니다.",
+                    "label_en": f"Trim to {new_peak:.1f}°C",
+                    "label_ko": f"{new_peak:.1f}°C로 적용",
                     "action_payload": {
                         "boiler_mode": "indoor_temp",
                         "use_schedule": True,
@@ -342,6 +383,7 @@ def _build_savings_recommendations(
             wind_kmh=avg_wind,
             area_pyeong=area_pyeong,
             building_type=building_type,
+            orientation=orientation,
             boiler_mode="indoor_temp",
             target_temp_c=new_target,
             ondol_temp_c=ondol_temp_c,
@@ -353,19 +395,19 @@ def _build_savings_recommendations(
             use_schedule=False,
             raw_schedule={},
         )
+        best_behavioral_day = min(best_behavioral_day, trim_day_m3)
         trim_bill_krw = _calculate_krw(cycle_hw_m3 + trim_day_m3 * billing_cycle_days, tariff)["total_bill_krw"]
         trim_savings = base_bill_krw - trim_bill_krw
         if trim_savings >= 1000:
             tips.append({
                 "id": "trim_indoor_temp",
-                "title": f"Trim Target Temp by 1.5°C ({target_temp_c:.1f}°C → {new_target:.1f}°C) + Humidifier",
+                "title_en": f"Trim Target Temp by 1.5°C ({target_temp_c:.1f}°C → {new_target:.1f}°C) + Humidifier",
+                "title_ko": f"희망 실내온도 1.5°C 낮추기 ({target_temp_c:.1f}°C → {new_target:.1f}°C) + 가습기",
                 "savings_krw": int(trim_savings),
-                "comfort_note": (
-                    "Keeping indoor humidity at 45–55% (humidifier or damp towel) improves heat transfer "
-                    f"and makes {new_target:.1f}°C feel as warm as {target_temp_c:.1f}°C."
-                ),
-                "action_type": "apply_constant",
-                "action_label": f"Set {new_target:.1f}°C",
+                "note_en": f"45–55% humidity makes {new_target:.1f}°C feel as warm as {target_temp_c:.1f}°C while cutting peak gas burn.",
+                "note_ko": f"습도 45~55%를 유지하면 {new_target:.1f}°C로 설정해도 {target_temp_c:.1f}°C처럼 따뜻하게 지낼 수 있습니다.",
+                "label_en": f"Set {new_target:.1f}°C",
+                "label_ko": f"{new_target:.1f}°C 적용",
                 "action_payload": {
                     "boiler_mode": "indoor_temp",
                     "use_schedule": False,
@@ -379,6 +421,7 @@ def _build_savings_recommendations(
             wind_kmh=avg_wind,
             area_pyeong=area_pyeong,
             building_type=building_type,
+            orientation=orientation,
             boiler_mode="ondol_water",
             target_temp_c=target_temp_c,
             ondol_temp_c=new_ondol,
@@ -390,26 +433,26 @@ def _build_savings_recommendations(
             use_schedule=False,
             raw_schedule={},
         )
+        best_behavioral_day = min(best_behavioral_day, trim_day_m3)
         trim_bill_krw = _calculate_krw(cycle_hw_m3 + trim_day_m3 * billing_cycle_days, tariff)["total_bill_krw"]
         trim_savings = base_bill_krw - trim_bill_krw
         if trim_savings >= 1000:
             tips.append({
                 "id": "trim_ondol_temp",
-                "title": f"Lower Floor Water Temp from {ondol_temp_c:.0f}°C → {new_ondol:.0f}°C",
+                "title_en": f"Lower Floor Water Temp ({ondol_temp_c:.0f}°C → {new_ondol:.0f}°C)",
+                "title_ko": f"온돌 난방수 온도 5°C 낮추기 ({ondol_temp_c:.0f}°C → {new_ondol:.0f}°C)",
                 "savings_krw": int(trim_savings),
-                "comfort_note": (
-                    "Once the floor slab is warm, 48–55°C water maintains steady radiant floor heat "
-                    "without overheating the room."
-                ),
-                "action_type": "apply_ondol",
-                "action_label": f"Set Ondol {new_ondol:.0f}°C",
+                "note_en": "Once the floor slab is warm, 48–55°C water maintains steady radiant floor heat without overheating.",
+                "note_ko": "바닥이 한 번 데워진 후에는 48~55°C 난방수만으로도 복사열이 오래 유지되어 가스비를 크게 줄입니다.",
+                "label_en": f"Set Ondol {new_ondol:.0f}°C",
+                "label_ko": f"온돌 {new_ondol:.0f}°C 적용",
                 "action_payload": {
                     "boiler_mode": "ondol_water",
                     "ondol_temp_c": new_ondol,
                 },
             })
 
-    # 2. Gentle Setback 24h Schedule (keeps concrete slab warm during daytime/night)
+    # 2. Gentle Setback 24h Schedule
     ref_warm = peak_sched_temp if use_schedule else target_temp_c
     warm_temp = round(min(22.0, max(19.5, ref_warm - 1.0)), 1)
     setback_temp = round(max(18.0, warm_temp - 2.5), 1)
@@ -425,6 +468,7 @@ def _build_savings_recommendations(
         wind_kmh=avg_wind,
         area_pyeong=area_pyeong,
         building_type=building_type,
+        orientation=orientation,
         boiler_mode="indoor_temp",
         target_temp_c=warm_temp,
         ondol_temp_c=ondol_temp_c,
@@ -436,24 +480,28 @@ def _build_savings_recommendations(
         use_schedule=True,
         raw_schedule=smart_schedule,
     )
+    best_behavioral_day = min(best_behavioral_day, sched_day_m3)
     sched_bill_krw = _calculate_krw(cycle_hw_m3 + sched_day_m3 * billing_cycle_days, tariff)["total_bill_krw"]
     sched_savings = base_bill_krw - sched_bill_krw
 
     if sched_savings >= 1500:
         tips.append({
             "id": "smart_setback_schedule",
-            "title": (
-                f"Replace 'Away' Off-Blocks with a {setback_temp:.1f}°C Gentle Setback"
+            "title_en": (
+                f"Replace 'Away' Off-Blocks with {setback_temp:.1f}°C Gentle Setback"
                 if has_deep_away
-                else f"Switch to a 24h Gentle Setback Schedule ({warm_temp:.1f}°C / {setback_temp:.1f}°C)"
+                else f"Switch to 24h Gentle Setback Schedule ({warm_temp:.1f}°C / {setback_temp:.1f}°C)"
+            ),
+            "title_ko": (
+                f"외출(끄기) 대신 {setback_temp:.1f}°C 미온 유지 스케줄 적용"
+                if has_deep_away
+                else f"24시간 스마트 절약 스케줄 전환 ({warm_temp:.1f}°C / {setback_temp:.1f}°C)"
             ),
             "savings_krw": int(sched_savings),
-            "comfort_note": (
-                "Keeps your concrete floor warm during work and sleep hours instead of overheating overnight "
-                "or letting the slab go cold."
-            ),
-            "action_type": "apply_schedule",
-            "action_label": "Apply Smart Schedule",
+            "note_en": "Prevents your concrete slab from going cold while you're away or asleep, avoiding high-burn reheating spikes.",
+            "note_ko": "외출·취침 시 바닥이 완전히 식는 것을 막아 귀가 후 보일러가 폭주하며 재가열하는 가스 낭비를 없앱니다.",
+            "label_en": "Apply Smart Schedule",
+            "label_ko": "스마트 스케줄 적용",
             "action_payload": {
                 "boiler_mode": "indoor_temp",
                 "use_schedule": True,
@@ -461,13 +509,15 @@ def _build_savings_recommendations(
             },
         })
 
-    # 3. Draft-Proofing (뽁뽁이/문풍지) & Ondol Mode Switch for Drafty/Older/Corner Homes
-    if is_top_or_corner or is_older_building or building_type in {"oneroom", "villa"}:
+    # 3. Draft-Proofing & Ondol Mode Switch
+    draft_m3_saved = 0.0
+    if is_top_or_corner or is_older_building or orientation == "north_ground" or building_type in {"oneroom", "villa"}:
         sealed_day_m3 = _day_heating_m3(
             outdoor_temp_c=cycle_avg_temp_c,
             wind_kmh=min(12.0, avg_wind),
             area_pyeong=area_pyeong,
             building_type=building_type,
+            orientation="east_west" if orientation == "north_ground" else orientation,
             boiler_mode=boiler_mode,
             target_temp_c=target_temp_c,
             ondol_temp_c=ondol_temp_c,
@@ -483,49 +533,62 @@ def _build_savings_recommendations(
         draft_bill_krw = _calculate_krw(max(0.0, base_total_m3 - draft_m3_saved), tariff)["total_bill_krw"]
         draft_savings = base_bill_krw - draft_bill_krw
         if draft_savings >= 1000:
-            mode_hint = (
-                " Also switch to 온돌 (Floor Water) mode so cold window drafts don't trick your wall thermostat."
-                if boiler_mode == "indoor_temp"
-                else ""
-            )
             tips.append({
                 "id": "draft_proofing",
-                "title": "Seal Window & Front-Door Drafts (에어캡 · 문풍지 · 암막커튼)",
+                "title_en": "Seal Window & Door Drafts (에어캡 · 문풍지 · 암막커튼)",
+                "title_ko": "창문 에어캡(뽁뽁이)·문풍지·암막커튼으로 웃풍 차단",
                 "savings_krw": int(draft_savings),
-                "comfort_note": (
-                    f"Stops cold Seoul wind ({avg_wind:.0f} km/h) from chilling the floor perimeter.{mode_hint}"
+                "note_en": (
+                    f"Blocks cold wind ({avg_wind:.0f} km/h) from chilling the floor. Switch to 온돌 mode so window drafts don't fool your thermostat."
+                    if boiler_mode == "indoor_temp"
+                    else f"Blocks cold wind ({avg_wind:.0f} km/h) from chilling your floor slab and perimeter."
                 ),
-                "action_type": "apply_ondol" if boiler_mode == "indoor_temp" else "info",
-                "action_label": "Switch to 온돌 55°C" if boiler_mode == "indoor_temp" else None,
+                "label_en": "Switch to 온돌 55°C" if boiler_mode == "indoor_temp" else None,
+                "label_ko": "온돌 55°C 전환" if boiler_mode == "indoor_temp" else None,
                 "action_payload": {"boiler_mode": "ondol_water", "ondol_temp_c": 55.0} if boiler_mode == "indoor_temp" else None,
             })
 
-    # 4. K-Gas Cashback (도시가스 절약 캐시백) Bonus Estimate
-    best_opt_day = min(base_day_heat, sched_day_m3)
-    best_m3_saved = max(0.0, (base_day_heat - best_opt_day) * billing_cycle_days)
-    if best_m3_saved >= 2.0:
-        cashback_krw = int(round(best_m3_saved * 100, -1))
+    # 4. K-Gas Cashback (도시가스 절약 캐시백)
+    behavioral_m3_saved = max(0.0, (base_day_heat - best_behavioral_day) * billing_cycle_days)
+    total_stack_m3_saved = behavioral_m3_saved + draft_m3_saved
+    if total_stack_m3_saved >= 2.0:
+        cashback_krw = int(round(total_stack_m3_saved * 100, -1))
         tips.append({
             "id": "k_gas_cashback",
-            "title": "Enroll in K-Gas Cashback (도시가스 절약 캐시백)",
+            "title_en": "Enroll in K-Gas Cashback (도시가스 절약 캐시백)",
+            "title_ko": "한국가스공사 '도시가스 절약 캐시백' 신청하기",
             "savings_krw": cashback_krw,
-            "comfort_note": (
-                "Cutting winter usage by 3%+ vs. last winter earns ₩50–200/m³ back in cash on top of lower bills."
-            ),
-            "action_type": "info",
-            "action_label": None,
+            "note_en": "Cutting winter usage by 3%+ vs. last winter earns ₩50–200/m³ back in cash on top of lower bills.",
+            "note_ko": "전년 동절기 대비 사용량을 3% 이상 줄이면 요금 절감과 별도로 m³당 50~200원을 현금으로 환급받습니다.",
+            "label_en": None,
+            "label_ko": None,
             "action_payload": None,
         })
 
     tips.sort(key=lambda x: x["savings_krw"], reverse=True)
-    return tips[:3]
+    top_tips = tips[:3]
+
+    # Combined potential savings (best behavioral change + physical draft proofing + cashback)
+    combined_m3 = max(0.0, base_total_m3 - total_stack_m3_saved)
+    combined_bill = _calculate_krw(combined_m3, tariff)["total_bill_krw"]
+    cashback_bonus = int(round(total_stack_m3_saved * 100, -1)) if total_stack_m3_saved >= 2.0 else 0
+    combined_savings_krw = max(
+        (top_tips[0]["savings_krw"] if top_tips else 0),
+        (base_bill_krw - combined_bill) + cashback_bonus,
+    )
+
+    return top_tips, int(combined_savings_krw), shock_alert
 
 
 def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     data = payload if isinstance(payload, dict) else {}
 
+    region = _safe_choice(data.get("region"), set(REGION_TARIFFS.keys()), "seoul")
+    reg_defaults = REGION_TARIFFS[region]
+
     area_pyeong = _safe_float(data.get("area_pyeong"), default=8.0, min_val=2.0, max_val=120.0)
     building_type = _safe_choice(data.get("building_type"), set(BUILDING_HEATING_FACTOR.keys()), "oneroom")
+    orientation = _safe_choice(data.get("orientation"), {"south", "east_west", "north_ground"}, "east_west")
     boiler_mode = _safe_choice(data.get("boiler_mode"), {"indoor_temp", "ondol_water", "away"}, "indoor_temp")
     stove_type = _safe_choice(data.get("stove_type"), {"gas", "induction"}, "gas")
     target_temp_c = _safe_float(data.get("target_temp_c"), default=22.0, min_val=15.0, max_val=30.0)
@@ -536,22 +599,22 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
     is_top_or_corner = _safe_bool(data.get("is_top_or_corner_unit"), default=False)
     is_older_building = _safe_bool(data.get("is_older_building"), default=False)
     household_size = _safe_int(data.get("household_size"), default=1, min_val=1, max_val=10)
-    month = _safe_choice(data.get("month"), set(MONTH_TO_NUM.keys()), "jan")
+    month = _safe_choice(data.get("month"), set(MONTH_TO_NUM.keys()), "nov")
     billing_cycle_days = _safe_int(data.get("billing_cycle_days"), default=30, min_val=15, max_val=45)
     use_schedule = _safe_bool(data.get("use_schedule"), default=False)
     raw_schedule = data.get("schedule") if isinstance(data.get("schedule"), dict) else {}
 
     tariff = {
-        "unit_rate_krw_per_mj": _safe_float(data.get("unit_rate_krw_per_mj"), DEFAULT_TARIFF["unit_rate_krw_per_mj"], 1.0, 200.0),
-        "base_charge_krw": _safe_float(data.get("base_charge_krw"), DEFAULT_TARIFF["base_charge_krw"], 0.0, 50000.0),
-        "avg_calorific_mj_per_m3": _safe_float(data.get("avg_calorific_mj_per_m3"), DEFAULT_TARIFF["avg_calorific_mj_per_m3"], 20.0, 60.0),
-        "correction_factor": _safe_float(data.get("correction_factor"), DEFAULT_TARIFF["correction_factor"], 0.8, 1.2),
-        "vat_rate": _safe_float(data.get("vat_rate"), DEFAULT_TARIFF["vat_rate"], 0.0, 0.5),
+        "unit_rate_krw_per_mj": _safe_float(data.get("unit_rate_krw_per_mj"), reg_defaults["unit_rate_krw_per_mj"], 1.0, 200.0),
+        "base_charge_krw": _safe_float(data.get("base_charge_krw"), reg_defaults["base_charge_krw"], 0.0, 50000.0),
+        "avg_calorific_mj_per_m3": _safe_float(data.get("avg_calorific_mj_per_m3"), reg_defaults["avg_calorific_mj_per_m3"], 20.0, 60.0),
+        "correction_factor": _safe_float(data.get("correction_factor"), reg_defaults["correction_factor"], 0.8, 1.2),
+        "vat_rate": _safe_float(data.get("vat_rate"), reg_defaults["vat_rate"], 0.0, 0.5),
     }
 
     baseline_per_person = 0.16 if stove_type == "induction" else 0.22
 
-    weather_info = fetch_seoul_weather_range(data.get("billing_start_date"))
+    weather_info = fetch_seoul_weather_range(data.get("billing_start_date"), region=region)
     daily_weather = weather_info["daily"]
 
     elapsed_heating_m3 = 0.0
@@ -570,6 +633,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
             wind_kmh=d_wind,
             area_pyeong=area_pyeong,
             building_type=building_type,
+            orientation=orientation,
             boiler_mode=boiler_mode,
             target_temp_c=target_temp_c,
             ondol_temp_c=ondol_temp_c,
@@ -601,8 +665,8 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
     accrued_to_date_m3 = elapsed_heating_m3 + elapsed_hw_m3
     accrued_to_date_billing = _calculate_krw(accrued_to_date_m3, tariff)
 
-    month_num = MONTH_TO_NUM.get(month, 1)
-    fallback_temp = MONTHLY_FALLBACK_TEMP_C.get(month_num, 2.5)
+    month_num = MONTH_TO_NUM.get(month, 11)
+    fallback_temp = MONTHLY_FALLBACK_TEMP_C.get(month_num, 5.0)
     fallback_wind = MONTHLY_FALLBACK_WIND_KMH.get(month_num, 14.0)
     remaining_days = max(0, billing_cycle_days - days_elapsed)
 
@@ -634,6 +698,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
             wind_kmh=f_wind,
             area_pyeong=area_pyeong,
             building_type=building_type,
+            orientation=orientation,
             boiler_mode=boiler_mode,
             target_temp_c=target_temp_c,
             ondol_temp_c=ondol_temp_c,
@@ -663,7 +728,6 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
     projected_billing = _calculate_krw(projected_total_m3, tariff)
 
     schedule_blocks_out = []
-    sched_heat_sum = 0.0
     prev_t: Optional[float] = None
     away_acc = 0.0
     avg_wind = weather_info.get("elapsed_avg_wind_kmh", fallback_wind)
@@ -690,6 +754,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
             duty_cycle=block["hours"] / 24.0,
             is_top_or_corner=is_top_or_corner,
             is_older=is_older_building,
+            orientation=orientation,
             wind_kmh=avg_wind,
             away_interval_min=away_interval_min,
             away_cycle_hours=away_cycle_hours,
@@ -697,7 +762,6 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
             recovery_penalty=rec,
         )
         b_month_m3 = b_daily * billing_cycle_days
-        sched_heat_sum += b_month_m3
         b_cost = round(
             b_month_m3
             * tariff["correction_factor"]
@@ -721,26 +785,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
             prev_t = min(b_temp, 16.0)
             away_acc += block["hours"]
 
-    const_day_heat = _day_heating_m3(
-        outdoor_temp_c=cycle_avg_temp_c,
-        wind_kmh=avg_wind,
-        area_pyeong=area_pyeong,
-        building_type=building_type,
-        boiler_mode=boiler_mode,
-        target_temp_c=target_temp_c,
-        ondol_temp_c=ondol_temp_c,
-        away_interval_min=away_interval_min,
-        away_cycle_hours=away_cycle_hours,
-        heating_hours=heating_hours,
-        is_top_or_corner=is_top_or_corner,
-        is_older=is_older_building,
-        use_schedule=False,
-        raw_schedule={},
-    )
-    const_bill_krw = _calculate_krw(projected_hw_m3 + const_day_heat * billing_cycle_days, tariff)["total_bill_krw"]
-    sched_bill_krw = _calculate_krw(projected_hw_m3 + sched_heat_sum, tariff)["total_bill_krw"]
-
-    recommendations = _build_savings_recommendations(
+    recommendations, combined_savings_krw, shock_alert = _build_savings_recommendations(
         cycle_avg_temp_c=cycle_avg_temp_c,
         avg_wind=avg_wind,
         billing_cycle_days=billing_cycle_days,
@@ -748,6 +793,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
         household_size=household_size,
         area_pyeong=area_pyeong,
         building_type=building_type,
+        orientation=orientation,
         boiler_mode=boiler_mode,
         target_temp_c=target_temp_c,
         ondol_temp_c=ondol_temp_c,
@@ -762,12 +808,10 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
     )
 
     return {
+        "region": region,
+        "region_tariffs": REGION_TARIFFS,
         "mode": "schedule" if use_schedule else "constant",
         "boiler_mode": boiler_mode,
-        "ml_engine": {
-            "model": "CalibratedThermalPhysics(Slab+Wind)",
-            "sklearn_available": True,
-        },
         "weather_tracker": {
             "billing_start_date": weather_info["billing_start_date"],
             "as_of_date": weather_info["as_of_date"],
@@ -791,13 +835,10 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
         },
         "billing": projected_billing,
         "recommendations": recommendations,
+        "combined_savings_krw": combined_savings_krw,
+        "shock_alert": shock_alert,
         "comparison": {
-            "constant_temp_c": target_temp_c,
-            "schedule_savings_krw": const_bill_krw - sched_bill_krw,
             "schedule_blocks": schedule_blocks_out,
-        },
-        "assumptions": {
-            "seoul_avg_temp_c": forecast_avg_temp_c,
         },
     }
 

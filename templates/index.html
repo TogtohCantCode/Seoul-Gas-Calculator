@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Seoul Gas Edge — ML &amp; Weather Cycle Tracker</title>
+  <title>Korea Gas Bill Saver — Warmth &amp; Savings Calculator</title>
   <style>
     :root {
       --cf-orange: #F6821F;
@@ -12,6 +12,9 @@
       --cf-green: #15803D;
       --cf-green-soft: #F0FDF4;
       --cf-green-border: #BBF7D0;
+      --cf-amber: #B45309;
+      --cf-amber-soft: #FFFBEB;
+      --cf-amber-border: #FDE68A;
       --cf-ink: #1D1E20;
       --cf-ink-secondary: #4A5056;
       --cf-muted: #6C737A;
@@ -74,7 +77,7 @@
       font-family: var(--mono);
       font-weight: 800;
     }
-    .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
     .status-badge {
       display: inline-flex;
       align-items: center;
@@ -94,6 +97,37 @@
       border-radius: 50%;
       background: #16A34A;
       box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+    }
+    .lang-toggle {
+      display: inline-flex;
+      border: 1px solid var(--cf-border);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--cf-surface);
+    }
+    .lang-toggle button {
+      border: none;
+      background: transparent;
+      padding: 0.26rem 0.6rem;
+      font-size: 0.74rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--cf-ink-secondary);
+    }
+    .lang-toggle button.active {
+      background: var(--cf-orange);
+      color: #FFFFFF;
+    }
+
+    .wakeup-bar {
+      background: var(--cf-orange-soft);
+      border-bottom: 1px solid var(--cf-orange-border);
+      color: var(--cf-orange);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-align: center;
+      padding: 0.45rem 1rem;
     }
 
     .hero {
@@ -126,7 +160,7 @@
     }
     h1 {
       margin: 0;
-      font-size: clamp(1.7rem, 3vw, 2.3rem);
+      font-size: clamp(1.65rem, 2.9vw, 2.25rem);
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1.15;
@@ -134,8 +168,8 @@
     .hero-sub {
       margin: 0.5rem 0 0;
       color: var(--cf-ink-secondary);
-      font-size: 0.98rem;
-      max-width: 640px;
+      font-size: 0.96rem;
+      max-width: 650px;
     }
     .presets { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .chip {
@@ -206,6 +240,27 @@
       border-radius: 999px;
       white-space: nowrap;
     }
+    .combined-banner {
+      background: var(--cf-green-soft);
+      border: 1px solid var(--cf-green-border);
+      color: var(--cf-green);
+      font-size: 0.82rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      margin-bottom: 0.85rem;
+      line-height: 1.4;
+    }
+    .shock-alert {
+      background: var(--cf-amber-soft);
+      border: 1px solid var(--cf-amber-border);
+      color: var(--cf-amber);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      margin-bottom: 0.85rem;
+      line-height: 1.4;
+    }
     .tip-card {
       background: var(--cf-surface);
       border: 1px solid var(--cf-border);
@@ -263,6 +318,25 @@
       padding: 0.75rem;
       border-radius: 6px;
     }
+    .share-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.9rem;
+      padding-top: 0.85rem;
+      border-top: 1px dashed var(--cf-border);
+    }
+    .share-btn {
+      flex: 1;
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      color: var(--cf-ink);
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.48rem 0.65rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .share-btn:hover { border-color: var(--cf-orange); color: var(--cf-orange); }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 0.9rem; }
     label { display: flex; flex-direction: column; gap: 0.32rem; font-size: 0.8rem; font-weight: 600; color: var(--cf-ink-secondary); }
@@ -427,27 +501,32 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <span class="brand-mark">ICN</span>
-        <span>Seoul Gas Edge</span>
+        <span class="brand-mark">KR</span>
+        <span>Korea Gas Bill Saver</span>
       </div>
       <div class="badges">
-        <div class="status-badge"><span class="dot"></span><span id="ml-badge">SLAB + WIND ENGINE</span></div>
-        <div class="status-badge"><span id="wx-badge">WEATHER SYNCED</span></div>
+        <div class="status-badge"><span class="dot"></span><span id="wx-badge">WEATHER SYNCED</span></div>
+        <div class="lang-toggle">
+          <button type="button" id="lang-en" class="active">EN</button>
+          <button type="button" id="lang-ko">한</button>
+        </div>
       </div>
     </div>
   </header>
 
+  <div class="wakeup-bar" id="wakeup-banner" data-i18n="waking">Waking weather &amp; thermal engine...</div>
+
   <section class="hero">
     <div class="hero-inner">
       <div>
-        <span class="eyebrow">Slab Thermal Physics + 14-Day Seoul Forecast</span>
-        <h1>Track accrued winter gas from day one of your billing cycle.</h1>
-        <p class="hero-sub">Combines elapsed Seoul temperatures and wind speeds with a 14-day live forecast, Korean boiler control modes, and a live warmth-preserving savings optimizer.</p>
+        <span class="eyebrow" data-i18n="eyebrow">Capital Area Thermal Physics + 14-Day Live Forecast</span>
+        <h1 data-i18n="heroTitle">Save money on your gas bill while keeping your home warm.</h1>
+        <p class="hero-sub" data-i18n="heroSub">Tracks daily temperatures and wind speeds from your billing start date, projects your full-cycle bill, and simulates real KRW savings without freezing.</p>
       </div>
       <div class="presets">
-        <button type="button" class="chip active" data-preset="oneroom_jan">Oneroom · Cold</button>
-        <button type="button" class="chip" data-preset="wfh_balanced">WFH · Ondol 58°C</button>
-        <button type="button" class="chip" data-preset="apt_family">Apartment · 3 Residents</button>
+        <button type="button" class="chip active" data-preset="oneroom_jan" data-i18n="presetOneroom">Oneroom · Cold</button>
+        <button type="button" class="chip" data-preset="wfh_balanced" data-i18n="presetWfh">WFH · Ondol 58°C</button>
+        <button type="button" class="chip" data-preset="apt_family" data-i18n="presetApt">Apartment · 3 Residents</button>
       </div>
     </div>
   </section>
@@ -457,38 +536,60 @@
       <div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><span class="step-tag">01</span> Billing Cycle &amp; Home Profile</div>
+            <div class="card-title"><span class="step-tag">01</span> <span data-i18n="step01">Billing Cycle &amp; Home Profile</span></div>
           </div>
           <div class="grid">
-            <label>Billing Cycle Start Date
+            <label><span data-i18n="lblRegion">Region &amp; Tariff</span>
+              <select id="region">
+                <option value="seoul" selected>Seoul (서울 · 22.53원/MJ)</option>
+                <option value="gyeonggi">Gyeonggi (경기 · 22.62원/MJ)</option>
+                <option value="incheon">Incheon (인천 · 22.51원/MJ)</option>
+              </select>
+            </label>
+            <label><span data-i18n="lblStart">Billing Cycle Start Date</span>
               <input type="date" id="billing_start_date" value="{{ default_start_date }}" />
             </label>
-            <label>Cycle Length (Days)
+            <label><span data-i18n="lblDays">Cycle Length (Days)</span>
               <input type="number" step="1" id="billing_cycle_days" value="30" />
             </label>
-            <label>Fallback Month (Day 15+)
+            <label><span data-i18n="lblMonth">Fallback Month (Day 15+)</span>
               <select id="month">
-                <option value="nov">November (~7.5°C)</option>
-                <option value="dec">December (~1.0°C)</option>
-                <option value="jan" selected>January (-1.8°C)</option>
+                <option value="jan">January (-1.8°C)</option>
                 <option value="feb">February (~1.2°C)</option>
+                <option value="mar">March (~6.5°C)</option>
+                <option value="apr">April (~13.0°C)</option>
+                <option value="may">May (~18.5°C)</option>
+                <option value="jun">June (~22.8°C)</option>
+                <option value="jul">July (~25.5°C)</option>
+                <option value="aug">August (~26.2°C)</option>
+                <option value="sep">September (~21.8°C)</option>
+                <option value="oct">October (~15.2°C)</option>
+                <option value="nov" selected>November (~7.5°C)</option>
+                <option value="dec">December (~1.0°C)</option>
               </select>
             </label>
-            <label>Housing Type
+            <label><span data-i18n="lblHousing">Housing Type</span>
               <select id="building_type">
-                <option value="oneroom" selected>Oneroom</option>
-                <option value="officetel">Officetel</option>
-                <option value="villa">Villa</option>
-                <option value="apartment">Apartment</option>
+                <option value="oneroom" selected>Oneroom (원룸)</option>
+                <option value="officetel">Officetel (오피스텔)</option>
+                <option value="villa">Villa (빌라·다세대)</option>
+                <option value="apartment">Apartment (아파트)</option>
               </select>
             </label>
-            <label>Floor Area (평)
+            <label><span data-i18n="lblArea">Floor Area (평)</span>
               <input type="number" step="0.5" id="area_pyeong" value="8" />
             </label>
-            <label>Household Size
+            <label><span data-i18n="lblPeople">Household Size</span>
               <input type="number" step="1" id="household_size" value="1" />
             </label>
-            <label>Cooking Stove
+            <label><span data-i18n="lblOrient">Sun Exposure &amp; Floor</span>
+              <select id="orientation">
+                <option value="south">South-Facing (남향)</option>
+                <option value="east_west" selected>East / West (동·서향)</option>
+                <option value="north_ground">North / Ground Floor (북향·1층)</option>
+              </select>
+            </label>
+            <label><span data-i18n="lblStove">Cooking Stove</span>
               <select id="stove_type">
                 <option value="gas" selected>Gas Stove (가스레인지)</option>
                 <option value="induction">Electric Induction (인덕션)</option>
@@ -496,12 +597,12 @@
             </label>
           </div>
           <div class="checks">
-            <label><input type="checkbox" id="is_top_or_corner_unit" /> Top / Corner Unit</label>
-            <label><input type="checkbox" id="is_older_building" /> Older Building</label>
+            <label><input type="checkbox" id="is_top_or_corner_unit" /> <span data-i18n="chkCorner">Top / Corner Unit</span></label>
+            <label><input type="checkbox" id="is_older_building" /> <span data-i18n="chkOlder">Older Building</span></label>
           </div>
 
           <details class="tariff-box">
-            <summary>Seoul City Gas Tariff &amp; Calorific Override (고지서 단가·열량 보정)</summary>
+            <summary data-i18n="tariffSummary">City Gas Tariff &amp; Calorific Override (고지서 단가·열량 보정)</summary>
             <div class="grid">
               <label>Unit Rate (원/MJ)
                 <input type="number" step="0.0001" id="unit_rate_krw_per_mj" value="22.5268" />
@@ -521,11 +622,11 @@
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><span class="step-tag">02</span> Boiler Mode &amp; Temperature Control</div>
+            <div class="card-title"><span class="step-tag">02</span> <span data-i18n="step02">Boiler Mode &amp; Temperature Control</span></div>
           </div>
 
           <div style="margin-bottom:1rem;">
-            <label>Boiler Control Mode (보일러 난방모드)
+            <label><span data-i18n="lblBoilerMode">Boiler Control Mode (보일러 난방모드)</span>
               <select id="boiler_mode">
                 <option value="indoor_temp" selected>실내온도 (Indoor Air Thermostat)</option>
                 <option value="ondol_water">온돌 / 난방수 (Floor Water Temp °C)</option>
@@ -535,14 +636,14 @@
           </div>
 
           <div class="mode-switch" id="mode-switch-wrap">
-            <button type="button" class="mode-btn active" id="btn-const">Constant Temp Slider</button>
-            <button type="button" class="mode-btn" id="btn-sched">24h Temp Schedule</button>
+            <button type="button" class="mode-btn active" id="btn-const" data-i18n="btnConst">Constant Temp Slider</button>
+            <button type="button" class="mode-btn" id="btn-sched" data-i18n="btnSched">24h Temp Schedule</button>
           </div>
 
           <div id="sec-const" class="slider-panel">
             <div id="panel-indoor-slider">
               <div class="slider-readout">
-                <span style="font-weight:700;font-size:0.9rem;">Target Indoor Temp (실내온도)</span>
+                <span style="font-weight:700;font-size:0.9rem;" data-i18n="lblTargetTemp">Target Indoor Temp (실내온도)</span>
                 <span class="big-temp" id="lbl-target-temp">22.0°C</span>
               </div>
               <input type="range" id="target_temp_c" min="15" max="30" step="0.5" value="22" />
@@ -553,18 +654,18 @@
 
             <div id="panel-ondol" style="display:none;">
               <div class="slider-readout">
-                <span style="font-weight:700;font-size:0.9rem;">Floor Water Temp (온돌 난방수 온도)</span>
+                <span style="font-weight:700;font-size:0.9rem;" data-i18n="lblOndolTemp">Floor Water Temp (온돌 난방수 온도)</span>
                 <span class="big-temp" id="lbl-ondol-temp">60°C</span>
               </div>
               <input type="range" id="ondol_temp_c" min="40" max="80" step="1" value="60" />
               <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.72rem;color:var(--cf-muted);margin-top:0.3rem;">
-                <span>40°C (Mild)</span><span>55°C</span><span>65°C</span><span>80°C (Max)</span>
+                <span>40°C</span><span>55°C</span><span>65°C</span><span>80°C</span>
               </div>
             </div>
 
             <div id="panel-away" style="display:none;">
               <div class="slider-readout">
-                <span style="font-weight:700;font-size:0.9rem;">Interval Firing Pattern (예약 가동)</span>
+                <span style="font-weight:700;font-size:0.9rem;" data-i18n="lblAwayPattern">Interval Firing Pattern (예약 가동)</span>
                 <span class="big-temp" style="font-size:1.15rem;" id="lbl-away-pattern">20m every 3h</span>
               </div>
               <div class="grid" style="margin-top:0.5rem;">
@@ -579,7 +680,7 @@
 
             <div style="margin-top:1.1rem;padding-top:0.9rem;border-top:1px solid var(--cf-border);">
               <div class="slider-readout">
-                <span style="font-weight:600;font-size:0.84rem;color:var(--cf-ink-secondary);">Active Heating Duration</span>
+                <span style="font-weight:600;font-size:0.84rem;color:var(--cf-ink-secondary);" data-i18n="lblDuration">Active Heating Duration</span>
                 <strong style="font-family:var(--mono);font-size:0.9rem;" id="lbl-hours">12h / day</strong>
               </div>
               <input type="range" id="heating_hours_per_day" min="2" max="24" step="1" value="12" />
@@ -629,7 +730,7 @@
 
       <div>
         <div class="dark-card">
-          <div class="dark-eyebrow">Projected Full-Cycle Bill</div>
+          <div class="dark-eyebrow" data-i18n="projTitle">Projected Full-Cycle Bill</div>
           <div class="hero-bill" id="hero-total">₩0 <span>/ cycle</span></div>
           <div class="hero-meta" id="hero-usage">0 m³ · 0 MJ</div>
 
@@ -647,22 +748,28 @@
           </div>
 
           <div class="kv">
-            <div><span>Elapsed Avg Temp &amp; Wind</span><strong id="kv-avg-temp">0.0°C</strong></div>
-            <div><span>Cumulative HDD &amp; Fcst</span><strong id="kv-hdd">0.0</strong></div>
+            <div><span data-i18n="kvTemp">Elapsed Avg Temp &amp; Wind</span><strong id="kv-avg-temp">0.0°C</strong></div>
+            <div><span data-i18n="kvHdd">Cumulative HDD &amp; Fcst</span><strong id="kv-hdd">0.0</strong></div>
           </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><span class="step-tag">AI</span> Smart Warmth &amp; Savings Optimizer</div>
+            <div class="card-title"><span class="step-tag">TIP</span> <span data-i18n="optTitle">Smart Warmth &amp; Savings Optimizer</span></div>
             <span class="save-pill" id="max-save-badge">CALCULATING</span>
           </div>
+          <div class="shock-alert" id="shock-alert" style="display:none;"></div>
+          <div class="combined-banner" id="combined-banner" style="display:none;"></div>
           <div id="savings-list"></div>
+          <div class="share-row">
+            <button type="button" class="share-btn" id="btn-copy-plan" data-i18n="shareBtn">Copy Savings Plan</button>
+            <button type="button" class="share-btn" id="btn-copy-link" data-i18n="linkBtn">Copy Link</button>
+          </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Cycle-to-Date Weather &amp; Daily Log</div>
+            <div class="card-title" data-i18n="wxTitle">Cycle-to-Date Weather &amp; Daily Log</div>
           </div>
           <div class="chart-box">
             <svg id="temp-chart" viewBox="0 0 420 155" aria-label="Cycle temperature history"></svg>
