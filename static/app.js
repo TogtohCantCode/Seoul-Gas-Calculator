@@ -29,6 +29,8 @@ const I18N = {
     chkOlder: "Older Building",
     tariffSummary: "City Gas Tariff & Calorific Override (고지서 단가·열량 보정)",
     step02: "Boiler Mode & Temperature Control",
+    step03: "Coming 7-Day Forecast Action Plan",
+    fcstPill: "NEXT 7 DAYS",
     lblBoilerMode: "Boiler Control Mode (보일러 난방모드)",
     btnConst: "Constant Temp Slider",
     btnSched: "24h Temp Schedule",
@@ -69,6 +71,8 @@ const I18N = {
     chkOlder: "노후 건물 (단열 취약)",
     tariffSummary: "도시가스 단가 및 평균열량 직접 수정 (고지서 기준)",
     step02: "보일러 난방모드 및 온도 설정",
+    step03: "향후 7일 기상예보 맞춤 행동 가이드",
+    fcstPill: "향후 7일 예보",
     lblBoilerMode: "보일러 제어 방식",
     btnConst: "일정 온도 유지",
     btnSched: "24시간 온도 스케줄",
@@ -112,6 +116,7 @@ function setLanguage(lang) {
 
   if (latestResponse) {
     renderRecommendations(latestResponse);
+    renderForecastPlan(latestResponse.forecast_plan);
   }
   saveStateToBrowser();
 }
@@ -254,6 +259,38 @@ function applyRecommendation(index) {
   }
   syncBoilerModeUI();
   scheduleUpdate();
+}
+
+function renderForecastPlan(plan) {
+  if (!plan || !Array.isArray(plan.days)) return;
+  const strip = el("fcst-strip");
+  const list = el("fcst-actions");
+
+  strip.innerHTML = plan.days
+    .map((d) => {
+      const dayName = currentLang === "ko" ? d.day_ko : d.day_en;
+      return `
+      <div class="fcst-day ${d.regime}">
+        <div class="fcst-dow">${dayName} <span>${d.date}</span></div>
+        <div class="fcst-temps">${Math.round(d.min_c)}° / <strong>${Math.round(d.max_c)}°</strong></div>
+        <div class="fcst-wind">${Math.round(d.wind_kmh)}km/h</div>
+      </div>
+    `;
+    })
+    .join("");
+
+  list.innerHTML = (plan.actions || [])
+    .map((act) => {
+      const badge = currentLang === "ko" ? act.badge_ko : act.badge_en;
+      const text = currentLang === "ko" ? act.text_ko : act.text_en;
+      return `
+      <div class="fcst-action-item">
+        <span class="fcst-tag ${act.tone || "mild"}">${badge}</span>
+        <span class="fcst-text">${text}</span>
+      </div>
+    `;
+    })
+    .join("");
 }
 
 function renderRecommendations(data) {
@@ -501,6 +538,7 @@ async function runEstimate() {
     if (cEl) cEl.textContent = "₩" + Number(item.monthly_heating_cost_krw).toLocaleString("ko-KR");
   }
 
+  renderForecastPlan(data.forecast_plan);
   renderRecommendations(data);
   renderWeatherChart(wx.daily_ledger);
   renderLedger(wx.daily_ledger);

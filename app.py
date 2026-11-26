@@ -74,6 +74,9 @@ DEFAULT_SCHEDULE_BLOCKS = [
     {"id": "night", "label": "Night", "window": "23–06h", "hours": 7.0, "outdoor_offset_c": -3.0, "default_temp_c": 20.0, "default_active": True},
 ]
 
+WEEKDAY_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
+
 
 def _safe_float(val: Any, default: float, min_val: Optional[float] = None, max_val: Optional[float] = None) -> float:
     if val is None or val == "":
@@ -261,6 +264,152 @@ def _day_heating_m3(
     return total_day_m3
 
 
+def _build_forecast_action_plan(
+    *,
+    as_of_dt: date,
+    forecast_daily: list[dict[str, Any]],
+    fallback_temp: float,
+    fallback_wind: float,
+    boiler_mode: str,
+    is_older_building: bool,
+    is_top_or_corner: bool,
+) -> dict[str, Any]:
+    """Build a 7-day forecast strip and concrete day-by-day actions for the coming week."""
+    seven_days: list[dict[str, Any]] = []
+    for offset in range(1, 8):
+        fut_dt = as_of_dt + timedelta(days=offset)
+        if offset <= len(forecast_daily):
+            row = forecast_daily[offset - 1]
+            avg_t = float(row["avg_temp_c"])
+            min_t = float(row.get("min_temp_c", avg_t - 4.0))
+            max_t = float(row.get("max_temp_c", avg_t + 4.0))
+            wind_v = float(row.get("wind_kmh", fallback_wind))
+        else:
+            avg_t = MONTHLY_FALLBACK_TEMP_C.get(fut_dt.month, fallback_temp)
+            min_t = round(avg_t - 4.0, 1)
+            max_t = round(avg_t + 4.0, 1)
+            wind_v = MONTHLY_FALLBACK_WIND_KMH.get(fut_dt.month, fallback_wind)
+
+        if min_t <= 0.0:
+            regime = "freeze"
+        elif avg_t <= 5.0:
+            regime = "cold"
+        elif wind_v >= 18.0:
+            regime = "windy"
+        else:
+            regime = "mild"
+
+        wd = fut_dt.weekday()
+        seven_days.append({
+            "date": fut_dt.isoformat()[5:],  # MM-DD
+            "full_date": fut_dt.isoformat(),
+            "day_en": WEEKDAY_EN[wd],
+            "day_ko": WEEKDAY_KO[wd],
+            "min_c": round(min_t, 1),
+            "max_c": round(max_t, 1),
+            "avg_c": round(avg_t, 1),
+            "wind_kmh": round(wind_v, 0),
+            "regime": regime,
+        })
+
+    actions: list[dict[str, str]] = []
+
+    # 1. Detect incoming cold snap or sub-zero overnight lows
+    freeze_days = [d for d in seven_days if d["min_c"] <= 0.0]
+    biggest_drop = 0.0
+    drop_day: Optional[dict[str, Any]] = None
+    for idx in range(1, len(seven_days)):
+        drop = seven_days[idx - 1]["avg_c"] - seven_days[idx]["avg_c"]
+        if drop > biggest_drop:
+            biggest_drop = drop
+            drop_day = seven_days[idx]
+
+    if freeze_days:
+        first_f = freeze_days[0]
+        lowest_d = min(freeze_days, key=lambda x: x["min_c"])
+        actions.append({
+            "badge_en": f"FREEZE · {first_f['day_en']} ({first_f['date']})",
+            "badge_ko": f"영하권 · {first_f['day_ko']} ({first_f['date']})",
+            "tone": "cold",
+            "text_en": (
+                f"Overnight lows drop to {lowest_d['min_c']:.0f}°C starting {first_f['day_en']}. "
+                "Don't turn the boiler off when leaving—hold an 18.5°C setback and keep power plugged in for pipe freeze protection."
+            ),
+            "text_ko": (
+                f"{first_f['day_ko']}요일({first_f['date']})부터 최저 {lowest_d['min_c']:.0f}°C까지 떨어집니다. "
+                "단기 외출 시 보일러를 끄지 말고 18.5°C 미온 유지로 설정하고, 동파 방지를 위해 전원 코드를 절대 뽑지 마세요."
+            ),
+        })
+    elif biggest_drop >= 4.0 and drop_day is not None:
+        actions.append({
+            "badge_en": f"TEMP DROP · {drop_day['day_en']} ({drop_day['date']})",
+            "badge_ko": f"기온 급강하 · {drop_day['day_ko']} ({drop_day['date']})",
+            "tone": "cold",
+            "text_en": (
+                f"Temperatures drop {biggest_drop:.1f}°C on {drop_day['day_en']} (low {drop_day['min_c']:.0f}°C). "
+                "Close curtains right at sunset (~17:15) to trap daytime floor warmth."
+            ),
+            "text_ko": (
+                f"{drop_day['day_ko']}요일({drop_day['date']})에 기온이 {biggest_drop:.1f}°C 급락합니다(최저 {drop_day['min_c']:.0f}°C). "
+                "해 지는 오후 5시 15분경 커튼을 미리 쳐두면 낮 동안 데워진 바닥 온기를 오래 지킬 수 있습니다."
+            ),
+        })
+
+    # 2. Detect windy days where drafts fool indoor thermostats
+    windy_days = [d for d in seven_days if d["wind_kmh"] >= 18.0]
+    if windy_days and (is_older_building or is_top_or_corner or boiler_mode == "indoor_temp"):
+        w_labels_en = ", ".join(d["day_en"] for d in windy_days[:3])
+        w_labels_ko = "·".join(d["day_ko"] for d in windy_days[:3])
+        peak_w = max(d["wind_kmh"] for d in windy_days)
+        actions.append({
+            "badge_en": f"GUSTY · {w_labels_en}",
+            "badge_ko": f"강풍 외풍 · {w_labels_ko}요일",
+            "tone": "wind",
+            "text_en": (
+                f"Winds up to {peak_w:.0f} km/h on {w_labels_en}. "
+                "Switch to 온돌 (53–56°C) so cold window drafts don't trigger nonstop boiler firing."
+            ),
+            "text_ko": (
+                f"{w_labels_ko}요일 최대 {peak_w:.0f}km/h 바람이 예보되어 있습니다. "
+                "창가 외풍에 실내 온도계가 속아 보일러가 과가동되지 않도록 '온돌 모드(53~56°C)'로 전환하세요."
+            ),
+        })
+
+    # 3. Detect mild afternoons where daytime heating can be paused
+    mild_days = [d for d in seven_days if d["max_c"] >= 11.0]
+    if mild_days:
+        m_labels_en = ", ".join(d["day_en"] for d in mild_days[:3])
+        m_labels_ko = "·".join(d["day_ko"] for d in mild_days[:3])
+        warmest = max(mild_days, key=lambda x: x["max_c"])
+        actions.append({
+            "badge_en": f"MILD DAY · {m_labels_en}",
+            "badge_ko": f"온화한 낮 · {m_labels_ko}요일",
+            "tone": "mild",
+            "text_en": (
+                f"Afternoon highs reach {warmest['max_c']:.0f}°C on {m_labels_en}. "
+                "Pause daytime heating (09–18h) and open windows 5–10 min at 2 PM to vent moisture without chilling the floor."
+            ),
+            "text_ko": (
+                f"{m_labels_ko}요일 낮 최고 {warmest['max_c']:.0f}°C까지 올라갑니다. "
+                "낮 시간(09~18시) 난방은 끄고 오후 2시경 5~10분 짧게 환기하면 바닥 열 손실 없이 결로를 예방할 수 있습니다."
+            ),
+        })
+
+    if not actions:
+        actions.append({
+            "badge_en": "STEADY WEEK",
+            "badge_ko": "기온 안정 주간",
+            "tone": "mild",
+            "text_en": "Temperatures stay steady over the next 7 days—keep your 24h gentle setback schedule unchanged.",
+            "text_ko": "향후 7일간 큰 기온 급변이 없으므로 현재의 24시간 미온 유지 스케줄을 그대로 유지하세요.",
+        })
+
+    return {
+        "days": seven_days,
+        "actions": actions[:3],
+    }
+
+
 def _build_savings_recommendations(
     *,
     cycle_avg_temp_c: float,
@@ -313,7 +462,6 @@ def _build_savings_recommendations(
     peak_sched_temp = max(active_block_temps) if active_block_temps else 22.0
     has_deep_away = use_schedule and any(not v["active"] for v in norm_sched.values())
 
-    # Bill shock alert when user runs >= 23°C
     shock_alert: Optional[dict[str, str]] = None
     effective_peak = peak_sched_temp if (boiler_mode == "indoor_temp" and use_schedule) else target_temp_c
     if boiler_mode == "indoor_temp" and effective_peak >= 23.0 and base_heat_m3 > 15.0:
@@ -327,7 +475,6 @@ def _build_savings_recommendations(
             "ko": f"난방수 고온 주의 ({ondol_temp_c:.0f}°C): 난방수 65°C 이상 설정은 보일러 연속 가동으로 요금 폭탄의 주원인이 됩니다.",
         }
 
-    # 1. Trim current temperatures by 1.5°C
     best_behavioral_day = base_day_heat
     if boiler_mode == "indoor_temp" and use_schedule:
         max_trim = max((v["temp_c"] - 19.0 for v in norm_sched.values() if v["active"]), default=0.0)
@@ -452,7 +599,6 @@ def _build_savings_recommendations(
                 },
             })
 
-    # 2. Gentle Setback 24h Schedule
     ref_warm = peak_sched_temp if use_schedule else target_temp_c
     warm_temp = round(min(22.0, max(19.5, ref_warm - 1.0)), 1)
     setback_temp = round(max(18.0, warm_temp - 2.5), 1)
@@ -509,7 +655,6 @@ def _build_savings_recommendations(
             },
         })
 
-    # 3. Draft-Proofing & Ondol Mode Switch
     draft_m3_saved = 0.0
     if is_top_or_corner or is_older_building or orientation == "north_ground" or building_type in {"oneroom", "villa"}:
         sealed_day_m3 = _day_heating_m3(
@@ -548,7 +693,6 @@ def _build_savings_recommendations(
                 "action_payload": {"boiler_mode": "ondol_water", "ondol_temp_c": 55.0} if boiler_mode == "indoor_temp" else None,
             })
 
-    # 4. K-Gas Cashback (도시가스 절약 캐시백)
     behavioral_m3_saved = max(0.0, (base_day_heat - best_behavioral_day) * billing_cycle_days)
     total_stack_m3_saved = behavioral_m3_saved + draft_m3_saved
     if total_stack_m3_saved >= 2.0:
@@ -568,7 +712,6 @@ def _build_savings_recommendations(
     tips.sort(key=lambda x: x["savings_krw"], reverse=True)
     top_tips = tips[:3]
 
-    # Combined potential savings (best behavioral change + physical draft proofing + cashback)
     combined_m3 = max(0.0, base_total_m3 - total_stack_m3_saved)
     combined_bill = _calculate_krw(combined_m3, tariff)["total_bill_krw"]
     cashback_bonus = int(round(total_stack_m3_saved * 100, -1)) if total_stack_m3_saved >= 2.0 else 0
@@ -807,6 +950,16 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
         tariff=tariff,
     )
 
+    forecast_plan = _build_forecast_action_plan(
+        as_of_dt=as_of_dt,
+        forecast_daily=forecast_daily,
+        fallback_temp=fallback_temp,
+        fallback_wind=fallback_wind,
+        boiler_mode=boiler_mode,
+        is_older_building=is_older_building,
+        is_top_or_corner=is_top_or_corner,
+    )
+
     return {
         "region": region,
         "region_tariffs": REGION_TARIFFS,
@@ -835,6 +988,7 @@ def estimate_gas_bill(payload: Optional[dict[str, Any]] = None) -> dict[str, Any
         },
         "billing": projected_billing,
         "recommendations": recommendations,
+        "forecast_plan": forecast_plan,
         "combined_savings_krw": combined_savings_krw,
         "shock_alert": shock_alert,
         "comparison": {

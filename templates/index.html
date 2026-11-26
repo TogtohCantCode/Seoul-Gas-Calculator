@@ -15,6 +15,9 @@
       --cf-amber: #B45309;
       --cf-amber-soft: #FFFBEB;
       --cf-amber-border: #FDE68A;
+      --cf-blue: #1D4ED8;
+      --cf-blue-soft: #EFF6FF;
+      --cf-blue-border: #BFDBFE;
       --cf-ink: #1D1E20;
       --cf-ink-secondary: #4A5056;
       --cf-muted: #6C737A;
@@ -227,6 +230,99 @@
       background: var(--cf-orange-soft);
       padding: 0.12rem 0.45rem;
       border-radius: 4px;
+    }
+
+    /* 7-Day Forecast Action Card */
+    .fcst-strip {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.38rem;
+      margin-bottom: 0.9rem;
+    }
+    @media (max-width: 560px) {
+      .fcst-strip { grid-template-columns: repeat(4, 1fr); }
+    }
+    .fcst-day {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      border-radius: 6px;
+      padding: 0.42rem 0.3rem;
+      text-align: center;
+    }
+    .fcst-day.freeze {
+      background: var(--cf-blue-soft);
+      border-color: var(--cf-blue-border);
+    }
+    .fcst-day.windy {
+      background: var(--cf-amber-soft);
+      border-color: var(--cf-amber-border);
+    }
+    .fcst-dow {
+      font-size: 0.71rem;
+      font-weight: 700;
+      color: var(--cf-ink);
+    }
+    .fcst-dow span {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.64rem;
+      font-weight: 500;
+      color: var(--cf-muted);
+    }
+    .fcst-temps {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--cf-ink-secondary);
+      margin-top: 0.18rem;
+    }
+    .fcst-day.freeze .fcst-temps { color: var(--cf-blue); }
+    .fcst-wind {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--cf-muted);
+      margin-top: 0.1rem;
+    }
+    .fcst-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .fcst-action-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      border-radius: 6px;
+      padding: 0.55rem 0.7rem;
+      font-size: 0.79rem;
+      line-height: 1.4;
+      color: var(--cf-ink-secondary);
+    }
+    .fcst-tag {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      font-weight: 800;
+      padding: 0.16rem 0.42rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 0.08rem;
+    }
+    .fcst-tag.cold {
+      background: var(--cf-blue-soft);
+      border: 1px solid var(--cf-blue-border);
+      color: var(--cf-blue);
+    }
+    .fcst-tag.wind {
+      background: var(--cf-amber-soft);
+      border: 1px solid var(--cf-amber-border);
+      color: var(--cf-amber);
+    }
+    .fcst-tag.mild {
+      background: var(--cf-green-soft);
+      border: 1px solid var(--cf-green-border);
+      color: var(--cf-green);
     }
 
     .save-pill {
@@ -725,6 +821,15 @@
               <span id="cost-night" style="font-family:var(--mono);font-size:0.8rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="step-tag">03</span> <span data-i18n="step03">Coming 7-Day Forecast Action Plan</span></div>
+            <span class="save-pill" style="color:var(--cf-blue);background:var(--cf-blue-soft);border-color:var(--cf-blue-border);" data-i18n="fcstPill">NEXT 7 DAYS</span>
+          </div>
+          <div class="fcst-strip" id="fcst-strip"></div>
+          <div class="fcst-actions" id="fcst-actions"></div>
         </div>
       </div>
 
