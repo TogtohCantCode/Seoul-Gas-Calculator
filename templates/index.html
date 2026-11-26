@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Seoul Gas Edge — Winter Billing &amp; Thermal Estimator</title>
+  <title>Seoul Gas Edge — ML &amp; Weather Cycle Tracker</title>
   <style>
     :root {
       --cf-orange: #F6821F;
-      --cf-orange-hover: #E06D0A;
       --cf-orange-soft: #FFF5EC;
       --cf-orange-border: #FBD3B0;
+      --cf-green: #15803D;
+      --cf-green-soft: #F0FDF4;
+      --cf-green-border: #BBF7D0;
       --cf-ink: #1D1E20;
       --cf-ink-secondary: #4A5056;
       --cf-muted: #6C737A;
@@ -19,10 +21,6 @@
       --cf-dark: #00112C;
       --cf-dark-surface: #0A1E3F;
       --cf-dark-border: #1E355E;
-      --cf-green: #15803D;
-      --cf-green-bg: #DCFCE7;
-      --cf-red: #B91C1C;
-      --cf-red-bg: #FEE2E2;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
     }
@@ -38,7 +36,6 @@
       line-height: 1.5;
     }
 
-    /* Top Cloudflare-style Utility Bar */
     .topbar {
       background: #FFFFFF;
       border-bottom: 1px solid var(--cf-border);
@@ -53,7 +50,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
     }
     .brand {
       display: flex;
@@ -62,7 +60,6 @@
       font-weight: 800;
       font-size: 1.05rem;
       letter-spacing: -0.02em;
-      color: var(--cf-ink);
     }
     .brand-mark {
       width: 28px;
@@ -77,16 +74,17 @@
       font-family: var(--mono);
       font-weight: 800;
     }
+    .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .status-badge {
       display: inline-flex;
       align-items: center;
       gap: 0.45rem;
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       font-weight: 600;
       color: var(--cf-ink-secondary);
       background: var(--cf-surface);
       border: 1px solid var(--cf-border);
-      padding: 0.3rem 0.7rem;
+      padding: 0.28rem 0.65rem;
       border-radius: 999px;
       font-family: var(--mono);
     }
@@ -98,11 +96,10 @@
       box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
     }
 
-    /* Hero Banner */
     .hero {
       background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 245, 236, 0.65) 100%);
       border-bottom: 1px solid var(--cf-border);
-      padding: 2.5rem 1.5rem 2.25rem;
+      padding: 2.25rem 1.5rem 2rem;
     }
     .hero-inner {
       max-width: 1180px;
@@ -111,84 +108,70 @@
       flex-wrap: wrap;
       justify-content: space-between;
       align-items: flex-end;
-      gap: 1.5rem;
+      gap: 1.25rem;
     }
     .eyebrow {
       display: inline-block;
       font-family: var(--mono);
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: var(--cf-orange);
       background: var(--cf-orange-soft);
       border: 1px solid var(--cf-orange-border);
-      padding: 0.25rem 0.65rem;
+      padding: 0.22rem 0.65rem;
       border-radius: 4px;
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.65rem;
     }
     h1 {
       margin: 0;
-      font-size: clamp(1.75rem, 3vw, 2.4rem);
+      font-size: clamp(1.7rem, 3vw, 2.3rem);
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1.15;
-      color: var(--cf-ink);
     }
     .hero-sub {
-      margin: 0.55rem 0 0;
+      margin: 0.5rem 0 0;
       color: var(--cf-ink-secondary);
-      font-size: 1rem;
-      max-width: 620px;
+      font-size: 0.98rem;
+      max-width: 640px;
     }
-    .presets {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
+    .presets { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .chip {
       background: #FFFFFF;
       border: 1px solid var(--cf-border);
       color: var(--cf-ink);
-      padding: 0.5rem 0.9rem;
+      padding: 0.48rem 0.85rem;
       border-radius: 6px;
-      font-size: 0.84rem;
+      font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .chip:hover {
-      border-color: var(--cf-orange);
-      color: var(--cf-orange);
     }
     .chip.active {
       background: var(--cf-orange);
       border-color: var(--cf-orange);
       color: #FFFFFF;
-      box-shadow: 0 2px 8px rgba(246, 130, 31, 0.28);
     }
 
-    /* Main Workspace */
     .wrap {
       max-width: 1180px;
       margin: 0 auto;
-      padding: 2rem 1.5rem 4rem;
+      padding: 1.75rem 1.5rem 4rem;
     }
     .layout {
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 1.12fr 0.88fr;
       gap: 1.5rem;
       align-items: start;
     }
-    @media (max-width: 900px) {
-      .layout { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
     .card {
       background: #FFFFFF;
       border: 1px solid var(--cf-border);
       border-radius: 8px;
-      padding: 1.5rem;
+      padding: 1.4rem;
       margin-bottom: 1.25rem;
       box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
     }
@@ -196,58 +179,107 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid var(--cf-border);
-      padding-bottom: 0.85rem;
-      margin-bottom: 1.15rem;
-    }
-    .card-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--cf-ink);
-      display: flex;
-      align-items: center;
       gap: 0.5rem;
+      border-bottom: 1px solid var(--cf-border);
+      padding-bottom: 0.8rem;
+      margin-bottom: 1.1rem;
     }
+    .card-title { font-size: 0.94rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
     .step-tag {
       font-family: var(--mono);
       font-size: 0.72rem;
       font-weight: 700;
       color: var(--cf-orange);
       background: var(--cf-orange-soft);
-      padding: 0.15rem 0.45rem;
+      padding: 0.12rem 0.45rem;
       border-radius: 4px;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 1rem;
+    .save-pill {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--cf-green);
+      background: var(--cf-green-soft);
+      border: 1px solid var(--cf-green-border);
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      white-space: nowrap;
     }
-    label {
+    .tip-card {
+      background: var(--cf-surface);
+      border: 1px solid var(--cf-border);
+      border-left: 3px solid #16A34A;
+      border-radius: 6px;
+      padding: 0.85rem 0.95rem;
+      margin-bottom: 0.75rem;
+    }
+    .tip-card:last-child { margin-bottom: 0; }
+    .tip-top {
       display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--cf-ink-secondary);
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.6rem;
     }
-    select, input[type="number"] {
+    .tip-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--cf-ink);
+      line-height: 1.35;
+    }
+    .tip-save {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--cf-green);
+      white-space: nowrap;
+    }
+    .tip-note {
+      font-size: 0.79rem;
+      color: var(--cf-ink-secondary);
+      margin-top: 0.35rem;
+      line-height: 1.45;
+    }
+    .tip-apply-btn {
+      margin-top: 0.55rem;
+      background: #FFFFFF;
+      border: 1px solid var(--cf-orange-border);
+      color: var(--cf-orange);
+      font-size: 0.76rem;
+      font-weight: 700;
+      padding: 0.32rem 0.7rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .tip-apply-btn:hover {
+      background: var(--cf-orange);
+      color: #FFFFFF;
+    }
+    .tip-empty {
+      font-size: 0.82rem;
+      color: var(--cf-ink-secondary);
+      background: var(--cf-green-soft);
+      border: 1px solid var(--cf-green-border);
+      padding: 0.75rem;
+      border-radius: 6px;
+    }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 0.9rem; }
+    label { display: flex; flex-direction: column; gap: 0.32rem; font-size: 0.8rem; font-weight: 600; color: var(--cf-ink-secondary); }
+    select, input[type="number"], input[type="date"] {
       background: #FFFFFF;
       border: 1px solid var(--cf-border);
       color: var(--cf-ink);
       border-radius: 6px;
-      padding: 0.55rem 0.7rem;
-      font-size: 0.92rem;
-      font-family: var(--sans);
-      transition: border-color 0.15s, box-shadow 0.15s;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.9rem;
     }
-    select:focus, input[type="number"]:focus {
+    select:focus, input:focus {
       outline: none;
       border-color: var(--cf-orange);
       box-shadow: 0 0 0 3px rgba(246, 130, 31, 0.16);
     }
 
-    /* Custom Range Slider */
     input[type="range"] {
       -webkit-appearance: none;
       appearance: none;
@@ -268,205 +300,127 @@
       border: 2px solid #FFFFFF;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
       cursor: pointer;
-      transition: transform 0.1s;
     }
-    input[type="range"]::-webkit-slider-thumb:hover {
-      transform: scale(1.12);
-    }
-    input[type="range"]:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
+    input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .checks {
       display: flex;
       gap: 1.5rem;
       flex-wrap: wrap;
-      margin-top: 1.1rem;
-      padding-top: 0.9rem;
+      margin-top: 1rem;
+      padding-top: 0.85rem;
       border-top: 1px dashed var(--cf-border);
     }
-    .checks label {
-      flex-direction: row;
-      align-items: center;
-      color: var(--cf-ink);
-      font-weight: 500;
-      cursor: pointer;
-    }
-    input[type="checkbox"] {
-      accent-color: var(--cf-orange);
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-    }
+    .checks label { flex-direction: row; align-items: center; color: var(--cf-ink); font-weight: 500; cursor: pointer; }
+    input[type="checkbox"] { accent-color: var(--cf-orange); width: 16px; height: 16px; cursor: pointer; }
 
-    /* Mode Tabs */
     .mode-switch {
-      display: inline-flex;
+      display: flex;
       background: var(--cf-surface);
       border: 1px solid var(--cf-border);
       padding: 0.25rem;
       border-radius: 6px;
-      margin-bottom: 1.15rem;
-      width: 100%;
+      margin-bottom: 1rem;
     }
     .mode-btn {
       flex: 1;
       border: none;
       background: transparent;
       color: var(--cf-ink-secondary);
-      padding: 0.55rem 0.75rem;
+      padding: 0.5rem 0.75rem;
       border-radius: 4px;
       font-weight: 700;
-      font-size: 0.85rem;
+      font-size: 0.84rem;
       cursor: pointer;
-      transition: 0.15s;
     }
-    .mode-btn.active {
-      background: #FFFFFF;
-      color: var(--cf-orange);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    }
+    .mode-btn.active { background: #FFFFFF; color: var(--cf-orange); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
     .slider-panel {
       background: var(--cf-surface);
       border: 1px solid var(--cf-border);
       border-radius: 8px;
-      padding: 1.1rem 1.2rem;
+      padding: 1rem 1.15rem;
     }
-    .slider-readout {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 0.5rem;
-    }
-    .big-temp {
-      font-family: var(--mono);
-      font-size: 1.55rem;
-      font-weight: 800;
-      color: var(--cf-orange);
-    }
+    .slider-readout { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.45rem; }
+    .big-temp { font-family: var(--mono); font-size: 1.5rem; font-weight: 800; color: var(--cf-orange); }
 
     .sched-row {
       display: grid;
-      grid-template-columns: 128px 1fr 68px 86px;
-      gap: 0.75rem;
+      grid-template-columns: 124px 1fr 66px 84px;
+      gap: 0.7rem;
       align-items: center;
-      padding: 0.7rem 0;
+      padding: 0.65rem 0;
       border-bottom: 1px solid var(--cf-border);
     }
     .sched-row:last-child { border-bottom: none; }
-    .sched-meta {
-      display: flex;
-      flex-direction: column;
-      font-size: 0.84rem;
-      font-weight: 700;
-      color: var(--cf-ink);
-    }
-    .sched-meta span {
-      font-family: var(--mono);
-      color: var(--cf-muted);
-      font-size: 0.72rem;
-      font-weight: 500;
-    }
+    .sched-meta { display: flex; flex-direction: column; font-size: 0.82rem; font-weight: 700; color: var(--cf-ink); }
+    .sched-meta span { font-family: var(--mono); color: var(--cf-muted); font-size: 0.7rem; font-weight: 500; }
 
-    /* Cloudflare Dark Navy Telemetry Summary Card */
+    details.tariff-box {
+      margin-top: 1rem;
+      padding-top: 0.85rem;
+      border-top: 1px dashed var(--cf-border);
+    }
+    details.tariff-box summary {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--cf-ink-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+    details.tariff-box .grid { margin-top: 0.75rem; }
+
     .dark-card {
       background: var(--cf-dark);
       color: #FFFFFF;
       border: 1px solid var(--cf-dark-border);
       border-radius: 8px;
-      padding: 1.6rem;
+      padding: 1.5rem;
       margin-bottom: 1.25rem;
       box-shadow: 0 10px 25px -5px rgba(0, 17, 44, 0.25);
     }
-    .dark-eyebrow {
-      font-family: var(--mono);
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #93C5FD;
-      font-weight: 700;
-      margin-bottom: 0.4rem;
-    }
-    .hero-bill {
-      font-size: 2.65rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1.1;
-      color: #FFFFFF;
-    }
-    .hero-bill span {
-      font-size: 1rem;
-      font-weight: 500;
-      color: #94A3B8;
-    }
-    .hero-meta {
-      font-family: var(--mono);
-      color: #CBD5E1;
-      font-size: 0.82rem;
-      margin-top: 0.45rem;
-    }
-    .pill {
-      display: inline-block;
+    .dark-eyebrow { font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #93C5FD; font-weight: 700; }
+    .hero-bill { font-size: 2.55rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-top: 0.25rem; }
+    .hero-bill span { font-size: 1rem; font-weight: 500; color: #94A3B8; }
+    .hero-meta { font-family: var(--mono); color: #CBD5E1; font-size: 0.8rem; margin-top: 0.45rem; }
+    .accrued-box {
       margin-top: 0.9rem;
-      padding: 0.4rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      font-weight: 700;
-    }
-    .pill.good { background: rgba(22, 163, 74, 0.22); color: #86EFAC; border: 1px solid rgba(134, 239, 172, 0.3); }
-    .pill.warn { background: rgba(246, 130, 31, 0.22); color: #FDBA74; border: 1px solid rgba(253, 186, 116, 0.35); }
-
-    .bar {
-      display: flex;
-      height: 8px;
-      border-radius: 999px;
-      overflow: hidden;
-      background: var(--cf-dark-surface);
-      margin: 1.25rem 0 0.55rem;
-    }
-    .bar-heat { background: var(--cf-orange); transition: width 0.25s ease; }
-    .bar-hw { background: #38BDF8; transition: width 0.25s ease; }
-    .legend {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.78rem;
-      color: #CBD5E1;
-      font-family: var(--mono);
-    }
-
-    .kv {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      margin-top: 1.15rem;
-    }
-    .kv div {
       background: var(--cf-dark-surface);
       border: 1px solid var(--cf-dark-border);
+      border-radius: 6px;
       padding: 0.75rem 0.85rem;
-      border-radius: 6px;
+      font-size: 0.82rem;
+      color: #E2E8F0;
     }
-    .kv span {
-      display: block;
-      color: #94A3B8;
-      font-size: 0.74rem;
-      margin-bottom: 0.15rem;
-    }
-    .kv strong {
-      font-family: var(--mono);
-      font-size: 1rem;
-      color: #FFFFFF;
-    }
+    .accrued-box strong { font-family: var(--mono); color: #FDBA74; }
 
-    .chart-box {
-      background: var(--cf-surface);
-      border: 1px solid var(--cf-border);
-      border-radius: 6px;
-      padding: 0.85rem;
+    .bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--cf-dark-surface); margin: 1.15rem 0 0.5rem; }
+    .bar-heat { background: var(--cf-orange); transition: width 0.25s ease; }
+    .bar-hw { background: #38BDF8; transition: width 0.25s ease; }
+    .legend { display: flex; justify-content: space-between; font-size: 0.76rem; color: #CBD5E1; font-family: var(--mono); }
+
+    .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin-top: 1rem; }
+    .kv div { background: var(--cf-dark-surface); border: 1px solid var(--cf-dark-border); padding: 0.7rem 0.8rem; border-radius: 6px; }
+    .kv span { display: block; color: #94A3B8; font-size: 0.72rem; }
+    .kv strong { font-family: var(--mono); font-size: 0.94rem; color: #FFFFFF; }
+
+    .chart-box { background: var(--cf-surface); border: 1px solid var(--cf-border); border-radius: 6px; padding: 0.75rem; }
+    svg { width: 100%; height: 155px; display: block; }
+    .ledger-list {
+      max-height: 170px;
+      overflow-y: auto;
+      margin-top: 0.75rem;
+      border-top: 1px solid var(--cf-border);
+      font-family: var(--mono);
+      font-size: 0.76rem;
     }
-    svg { width: 100%; height: 165px; display: block; }
+    .ledger-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.35rem 0.2rem;
+      border-bottom: 1px solid #F1F5F9;
+      color: var(--cf-ink-secondary);
+    }
   </style>
 </head>
 <body>
@@ -474,11 +428,11 @@
     <div class="topbar-inner">
       <div class="brand">
         <span class="brand-mark">ICN</span>
-        <span>Seoul Gas Analytics</span>
+        <span>Seoul Gas Edge</span>
       </div>
-      <div class="status-badge">
-        <span class="dot"></span>
-        <span>SEOUL TARIFF ₩22.5268/MJ · LIVE</span>
+      <div class="badges">
+        <div class="status-badge"><span class="dot"></span><span id="ml-badge">SLAB + WIND ENGINE</span></div>
+        <div class="status-badge"><span id="wx-badge">WEATHER SYNCED</span></div>
       </div>
     </div>
   </header>
@@ -486,13 +440,13 @@
   <section class="hero">
     <div class="hero-inner">
       <div>
-        <span class="eyebrow">Residential Thermal &amp; Billing Engine</span>
-        <h1>Predict your Seoul winter gas bill.</h1>
-        <p class="hero-sub">Model how hourly indoor temperature adjustments, building insulation, and Seoul winter cold snaps impact your monthly MJ consumption.</p>
+        <span class="eyebrow">Slab Thermal Physics + 14-Day Seoul Forecast</span>
+        <h1>Track accrued winter gas from day one of your billing cycle.</h1>
+        <p class="hero-sub">Combines elapsed Seoul temperatures and wind speeds with a 14-day live forecast, Korean boiler control modes, and a live warmth-preserving savings optimizer.</p>
       </div>
       <div class="presets">
-        <button type="button" class="chip active" data-preset="oneroom_jan">Oneroom · Jan Peak</button>
-        <button type="button" class="chip" data-preset="wfh_balanced">WFH · Steady 21.5°C</button>
+        <button type="button" class="chip active" data-preset="oneroom_jan">Oneroom · Cold</button>
+        <button type="button" class="chip" data-preset="wfh_balanced">WFH · Ondol 58°C</button>
         <button type="button" class="chip" data-preset="apt_family">Apartment · 3 Residents</button>
       </div>
     </div>
@@ -503,10 +457,16 @@
       <div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><span class="step-tag">01</span> Building &amp; Weather Profile</div>
+            <div class="card-title"><span class="step-tag">01</span> Billing Cycle &amp; Home Profile</div>
           </div>
           <div class="grid">
-            <label>Billing Month
+            <label>Billing Cycle Start Date
+              <input type="date" id="billing_start_date" value="{{ default_start_date }}" />
+            </label>
+            <label>Cycle Length (Days)
+              <input type="number" step="1" id="billing_cycle_days" value="30" />
+            </label>
+            <label>Fallback Month (Day 15+)
               <select id="month">
                 <option value="nov">November (~7.5°C)</option>
                 <option value="dec">December (~1.0°C)</option>
@@ -528,37 +488,99 @@
             <label>Household Size
               <input type="number" step="1" id="household_size" value="1" />
             </label>
+            <label>Cooking Stove
+              <select id="stove_type">
+                <option value="gas" selected>Gas Stove (가스레인지)</option>
+                <option value="induction">Electric Induction (인덕션)</option>
+              </select>
+            </label>
           </div>
           <div class="checks">
-            <label><input type="checkbox" id="is_top_or_corner_unit" /> Top / Corner Unit (+18% heat loss)</label>
-            <label><input type="checkbox" id="is_older_building" /> Older Building (+20% heat loss)</label>
+            <label><input type="checkbox" id="is_top_or_corner_unit" /> Top / Corner Unit</label>
+            <label><input type="checkbox" id="is_older_building" /> Older Building</label>
           </div>
+
+          <details class="tariff-box">
+            <summary>Seoul City Gas Tariff &amp; Calorific Override (고지서 단가·열량 보정)</summary>
+            <div class="grid">
+              <label>Unit Rate (원/MJ)
+                <input type="number" step="0.0001" id="unit_rate_krw_per_mj" value="22.5268" />
+              </label>
+              <label>Base Charge (원/월)
+                <input type="number" step="10" id="base_charge_krw" value="1250" />
+              </label>
+              <label>Avg Calorific (평균열량 MJ/m³)
+                <input type="number" step="0.01" id="avg_calorific_mj_per_m3" value="43.10" />
+              </label>
+              <label>Correction Factor (보정계수)
+                <input type="number" step="0.0001" id="correction_factor" value="0.9980" />
+              </label>
+            </div>
+          </details>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><span class="step-tag">02</span> Temperature Control Strategy</div>
+            <div class="card-title"><span class="step-tag">02</span> Boiler Mode &amp; Temperature Control</div>
           </div>
 
-          <div class="mode-switch">
-            <button type="button" class="mode-btn active" id="btn-const">Constant Setpoint Slider</button>
-            <button type="button" class="mode-btn" id="btn-sched">24-Hour Time-of-Day Schedule</button>
+          <div style="margin-bottom:1rem;">
+            <label>Boiler Control Mode (보일러 난방모드)
+              <select id="boiler_mode">
+                <option value="indoor_temp" selected>실내온도 (Indoor Air Thermostat)</option>
+                <option value="ondol_water">온돌 / 난방수 (Floor Water Temp °C)</option>
+                <option value="away">외출 / 예약 (Away / Interval Timer)</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mode-switch" id="mode-switch-wrap">
+            <button type="button" class="mode-btn active" id="btn-const">Constant Temp Slider</button>
+            <button type="button" class="mode-btn" id="btn-sched">24h Temp Schedule</button>
           </div>
 
           <div id="sec-const" class="slider-panel">
-            <div class="slider-readout">
-              <span style="font-weight:700;font-size:0.9rem;">Indoor Setpoint (실내온도)</span>
-              <span class="big-temp" id="lbl-target-temp">22.0°C</span>
-            </div>
-            <input type="range" id="target_temp_c" min="15" max="30" step="0.5" value="22" />
-            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.74rem;color:var(--cf-muted);margin-top:0.35rem;">
-              <span>15.0°C ECO</span><span>20.0°C</span><span>25.0°C</span><span>30.0°C MAX</span>
+            <div id="panel-indoor-slider">
+              <div class="slider-readout">
+                <span style="font-weight:700;font-size:0.9rem;">Target Indoor Temp (실내온도)</span>
+                <span class="big-temp" id="lbl-target-temp">22.0°C</span>
+              </div>
+              <input type="range" id="target_temp_c" min="15" max="30" step="0.5" value="22" />
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.72rem;color:var(--cf-muted);margin-top:0.3rem;">
+                <span>15.0°C</span><span>20.0°C</span><span>25.0°C</span><span>30.0°C</span>
+              </div>
             </div>
 
-            <div style="margin-top:1.15rem;padding-top:0.95rem;border-top:1px solid var(--cf-border);">
+            <div id="panel-ondol" style="display:none;">
               <div class="slider-readout">
-                <span style="font-weight:600;font-size:0.86rem;color:var(--cf-ink-secondary);">Active Heating Duration</span>
-                <strong style="font-family:var(--mono);font-size:0.92rem;" id="lbl-hours">12h / day</strong>
+                <span style="font-weight:700;font-size:0.9rem;">Floor Water Temp (온돌 난방수 온도)</span>
+                <span class="big-temp" id="lbl-ondol-temp">60°C</span>
+              </div>
+              <input type="range" id="ondol_temp_c" min="40" max="80" step="1" value="60" />
+              <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.72rem;color:var(--cf-muted);margin-top:0.3rem;">
+                <span>40°C (Mild)</span><span>55°C</span><span>65°C</span><span>80°C (Max)</span>
+              </div>
+            </div>
+
+            <div id="panel-away" style="display:none;">
+              <div class="slider-readout">
+                <span style="font-weight:700;font-size:0.9rem;">Interval Firing Pattern (예약 가동)</span>
+                <span class="big-temp" style="font-size:1.15rem;" id="lbl-away-pattern">20m every 3h</span>
+              </div>
+              <div class="grid" style="margin-top:0.5rem;">
+                <label>Run Minutes per Cycle
+                  <input type="range" id="away_interval_min" min="10" max="60" step="5" value="20" />
+                </label>
+                <label>Repeat Every (Hours)
+                  <input type="range" id="away_cycle_hours" min="1" max="6" step="1" value="3" />
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-top:1.1rem;padding-top:0.9rem;border-top:1px solid var(--cf-border);">
+              <div class="slider-readout">
+                <span style="font-weight:600;font-size:0.84rem;color:var(--cf-ink-secondary);">Active Heating Duration</span>
+                <strong style="font-family:var(--mono);font-size:0.9rem;" id="lbl-hours">12h / day</strong>
               </div>
               <input type="range" id="heating_hours_per_day" min="2" max="24" step="1" value="12" />
             </div>
@@ -566,100 +588,91 @@
 
           <div id="sec-sched" class="slider-panel" style="display:none;">
             <div class="sched-row">
-              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+              <label style="flex-direction:row;align-items:center;gap:0.45rem;">
                 <input type="checkbox" id="act-morning" checked />
-                <div class="sched-meta">Morning<span>06:00–09:00</span></div>
+                <div class="sched-meta">Morning<span>06–09h</span></div>
               </label>
               <input type="range" id="temp-morning" min="15" max="30" step="0.5" value="22" />
-              <strong id="val-morning" style="font-family:var(--mono);font-size:0.86rem;">22.0°C</strong>
-              <span id="cost-morning" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+              <strong id="val-morning" style="font-family:var(--mono);font-size:0.84rem;">22.0°C</strong>
+              <span id="cost-morning" style="font-family:var(--mono);font-size:0.8rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
             </div>
             <div class="sched-row">
-              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+              <label style="flex-direction:row;align-items:center;gap:0.45rem;">
                 <input type="checkbox" id="act-daytime" />
-                <div class="sched-meta">Daytime<span>09:00–18:00</span></div>
+                <div class="sched-meta">Daytime<span>09–18h</span></div>
               </label>
               <input type="range" id="temp-daytime" min="15" max="30" step="0.5" value="18" />
-              <strong id="val-daytime" style="font-family:var(--mono);font-size:0.86rem;">Away</strong>
-              <span id="cost-daytime" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+              <strong id="val-daytime" style="font-family:var(--mono);font-size:0.84rem;">Away</strong>
+              <span id="cost-daytime" style="font-family:var(--mono);font-size:0.8rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
             </div>
             <div class="sched-row">
-              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+              <label style="flex-direction:row;align-items:center;gap:0.45rem;">
                 <input type="checkbox" id="act-evening" checked />
-                <div class="sched-meta">Evening<span>18:00–23:00</span></div>
+                <div class="sched-meta">Evening<span>18–23h</span></div>
               </label>
               <input type="range" id="temp-evening" min="15" max="30" step="0.5" value="23" />
-              <strong id="val-evening" style="font-family:var(--mono);font-size:0.86rem;">23.0°C</strong>
-              <span id="cost-evening" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+              <strong id="val-evening" style="font-family:var(--mono);font-size:0.84rem;">23.0°C</strong>
+              <span id="cost-evening" style="font-family:var(--mono);font-size:0.8rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
             </div>
             <div class="sched-row">
-              <label style="flex-direction:row;align-items:center;gap:0.5rem;">
+              <label style="flex-direction:row;align-items:center;gap:0.45rem;">
                 <input type="checkbox" id="act-night" checked />
-                <div class="sched-meta">Night<span>23:00–06:00</span></div>
+                <div class="sched-meta">Night<span>23–06h</span></div>
               </label>
               <input type="range" id="temp-night" min="15" max="30" step="0.5" value="20" />
-              <strong id="val-night" style="font-family:var(--mono);font-size:0.86rem;">20.0°C</strong>
-              <span id="cost-night" style="font-family:var(--mono);font-size:0.82rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
+              <strong id="val-night" style="font-family:var(--mono);font-size:0.84rem;">20.0°C</strong>
+              <span id="cost-night" style="font-family:var(--mono);font-size:0.8rem;color:var(--cf-ink-secondary);text-align:right;">₩0</span>
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title"><span class="step-tag">03</span> Meter Burn-Rate Calibration (Optional)</div>
-          </div>
-          <div class="grid">
-            <label>Previous Meter (m³)
-              <input type="number" step="0.1" id="previous_reading_m3" placeholder="Optional" />
-            </label>
-            <label>Current Meter (m³)
-              <input type="number" step="0.1" id="current_reading_m3" placeholder="Optional" />
-            </label>
-            <label>Elapsed Days
-              <input type="number" step="1" id="elapsed_days" placeholder="e.g. 10" />
-            </label>
           </div>
         </div>
       </div>
 
       <div>
         <div class="dark-card">
-          <div class="dark-eyebrow">Projected Monthly Statement</div>
-          <div class="hero-bill" id="hero-total">₩0 <span>/ mo</span></div>
-          <div class="hero-meta" id="hero-usage">0 m³ · 0 MJ · Seoul ~-1.8°C</div>
-          <div id="delta-pill" class="pill good">Calculating...</div>
+          <div class="dark-eyebrow">Projected Full-Cycle Bill</div>
+          <div class="hero-bill" id="hero-total">₩0 <span>/ cycle</span></div>
+          <div class="hero-meta" id="hero-usage">0 m³ · 0 MJ</div>
+
+          <div class="accrued-box" id="accrued-summary">
+            Accrued since cycle start: <strong>₩0</strong> (<strong>0 m³</strong>)
+          </div>
 
           <div class="bar">
             <div class="bar-heat" id="bar-heat" style="width:70%"></div>
             <div class="bar-hw" id="bar-hw" style="width:30%"></div>
           </div>
           <div class="legend">
-            <span id="leg-heat">Space Heating: 0 m³</span>
-            <span id="leg-hw">Hot Water: 0 m³</span>
+            <span id="leg-heat">Heating: 0 m³</span>
+            <span id="leg-hw">Hot Water/Cook: 0 m³</span>
           </div>
+
           <div class="kv">
-            <div>
-              <span>Gas + Base Charge</span>
-              <strong id="kv-sub">₩0</strong>
-            </div>
-            <div>
-              <span>VAT</span>
-              <strong id="kv-vat">₩0</strong>
-            </div>
+            <div><span>Elapsed Avg Temp &amp; Wind</span><strong id="kv-avg-temp">0.0°C</strong></div>
+            <div><span>Cumulative HDD &amp; Fcst</span><strong id="kv-hdd">0.0</strong></div>
           </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Daily Temperature Schedule</div>
+            <div class="card-title"><span class="step-tag">AI</span> Smart Warmth &amp; Savings Optimizer</div>
+            <span class="save-pill" id="max-save-badge">CALCULATING</span>
+          </div>
+          <div id="savings-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Cycle-to-Date Weather &amp; Daily Log</div>
           </div>
           <div class="chart-box">
-            <svg id="temp-chart" viewBox="0 0 420 165" role="img" aria-label="Daily indoor temperature schedule"></svg>
+            <svg id="temp-chart" viewBox="0 0 420 155" aria-label="Cycle temperature history"></svg>
           </div>
+          <div class="ledger-list" id="daily-ledger"></div>
         </div>
       </div>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
